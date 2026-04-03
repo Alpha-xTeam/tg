@@ -42,9 +42,11 @@ YTDL_COMMON_PARAMS = {
     'no_warnings': True,
     'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-us,en;q=0.5',
+        'Referer': 'https://www.youtube.com/',
+        'Origin': 'https://www.youtube.com',
         'Sec-Fetch-Mode': 'navigate',
     }
 }
@@ -146,6 +148,7 @@ OUTPUT = "/tmp/downloads"
 
 # جلب ملف الكوكيز من رابط خارجي وتخزينه
 COOKIES_FILE = "cookies.txt"
+INSTA_COOKIES_FILE = "cookies2.txt"
 
 def validate_and_fix_cookies(file_path):
     """تحقق من صلاحية ملف الكوكيز وإصلاح أي تنسيق مفقود"""
@@ -169,25 +172,39 @@ def validate_and_fix_cookies(file_path):
         return False
 
 def update_cookies_from_url():
+    # تحديث كوكيز يوتيوب
     if os.path.exists(COOKIES_FILE):
         if validate_and_fix_cookies(COOKIES_FILE):
-            print(f"✅ Using validated cookies from {os.path.abspath(COOKIES_FILE)}")
-            return True
+            print(f"✅ YouTube cookies validated.")
         else:
-            print(f"⚠️ Cookie file exists but is invalid, trying to refresh...")
+            print(f"⚠️ YouTube cookies invalid.")
     
-    url = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies.txt"
+    # تحديث كوكيز انستا (cookies2.txt)
+    if os.path.exists(INSTA_COOKIES_FILE):
+        if validate_and_fix_cookies(INSTA_COOKIES_FILE):
+            print(f"✅ Instagram cookies validated.")
+    
+    yt_url = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies.txt"
+    insta_url = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies2.txt"
+    
     try:
         import requests
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
+        # تحميل كوكيز يوتيوب
+        res1 = requests.get(yt_url, timeout=10)
+        if res1.status_code == 200:
             with open(COOKIES_FILE, "wb") as f:
-                f.write(response.content)
-            if validate_and_fix_cookies(COOKIES_FILE):
-                print(f"✅ Cookies updated and validated from Supabase URL.")
-                return True
-            else:
-                print(f"⚠️ Downloaded cookies are invalid, will use fallback methods.")
+                f.write(res1.content)
+            validate_and_fix_cookies(COOKIES_FILE)
+            
+        # تحميل كوكيز انستا
+        res2 = requests.get(insta_url, timeout=10)
+        if res2.status_code == 200:
+            with open(INSTA_COOKIES_FILE, "wb") as f:
+                f.write(res2.content)
+            validate_and_fix_cookies(INSTA_COOKIES_FILE)
+            print(f"✅ All cookies updated from Supabase.")
+            return True
+            
     except Exception as e:
         print(f"❌ Error downloading cookies: {e}")
     return False
@@ -424,7 +441,8 @@ user_subscription_notified = set()
 
 def _build_ydl_opts(format_id=None, extra_clients=None):
     # استخدام العميل web فقط عند وجود PO Token والعملاء الآخرين كاحتياط
-    clients = extra_clients or ['web', 'ios', 'tv']
+    # إضافة MWEB كعميل إضافي لتخفيف الضغط
+    clients = extra_clients or ['mweb', 'ios', 'tv', 'android']
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -433,7 +451,7 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
             'player_client': clients,
             'player_skip': ['webpage', 'configs', 'js', 'sig'],
         }},
-        # استخدام User-Agent متوافق تماماً مع التوكن المولد
+        # استخدام User-Agent متوافق مع نسخة كروم 121
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     }
     
@@ -528,9 +546,12 @@ def get_yt_formats(url):
     
     # Fallback to pytubefix with delay between attempts
     import time
-    for client_name in ['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']:
+    for i, client_name in enumerate(['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']):
         try:
-            time.sleep(1)  # Delay between attempts
+            # استخدام تأخير تصاعدي (Exponential Backoff) لتجنب الحظر
+            # التأخير = 2 أس رقم المحاولة (مثلاً 2، 4، 8 ثواني)
+            wait_time = 2 ** i
+            time.sleep(wait_time) 
             # الحصول على بيانات التوكن
             v_data, p_token = po_token_verifier()
             yt = PyTuneYT(
@@ -778,9 +799,15 @@ def download_social(url, platform="social"):
             'no_warnings': True,
             'skip_unavailable_fragments': True,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
             }
         }
+        
+        # إضافة ملف الكوكيز إن وجد لتجاوز حظر انستقرام
+        if os.path.exists(INSTA_COOKIES_FILE):
+            ydl_opts['cookiefile'] = INSTA_COOKIES_FILE
+        elif os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
