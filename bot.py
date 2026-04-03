@@ -464,16 +464,21 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
         ydl_opts['extractor_args']['youtube']['po_token'] = [token_value]
         ydl_opts['extractor_args']['youtube']['visitor_data'] = [YOUTUBE_VISITOR_DATA]
         
-        # عند استخدام PO Token يفضل تعطيل الكوكيز أحياناً لتجنب تضارب الحساب
-        # سنبقيها حالياً ولكن سنضع عميل الويب في المقدمة
+        # عند استخدام PO Token يفضل عدم استخدام الكوكيز لعميل الويب لتجنب تعارض الحساب
         ydl_opts['extractor_args']['youtube']['player_client'] = ['web']
+        # إذا كان عميل الويب هو الأساس، يفضل حذف الكوكيز لهذا العميل تحديداً
+        if 'cookiefile' in ydl_opts:
+            del ydl_opts['cookiefile']
     
     if format_id:
         ydl_opts['format'] = format_id
     if PROXY:
         ydl_opts['proxy'] = PROXY
-    if os.path.exists(COOKIES_FILE):
+    
+    # استخدام الكوكيز فقط إذا لم يتم استخدام PO Token (لأن الويب توكن حساس للكوكيز)
+    if not (YOUTUBE_PO_TOKEN and YOUTUBE_VISITOR_DATA) and os.path.exists(COOKIES_FILE):
         ydl_opts['cookiefile'] = COOKIES_FILE
+        
     return ydl_opts
 
 # دالة جلب معلومات اليوتيوب باستخدام Google API كخيار أول
