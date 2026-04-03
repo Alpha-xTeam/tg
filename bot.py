@@ -46,51 +46,59 @@ def po_token_verifier():
 
 # دالة توليد PO Token جديد باستخدام Selenium
 def regenerate_network_token():
-    sample_video = "https://www.youtube.com/embed/aqz-KE-bpKQ"
+    sample_video = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
 
     chrome_options = Options()
     chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument('--incognito')
     chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
     chrome_options.set_capability(
         'goog:loggingPrefs', {'performance': 'ALL'})
 
     driver = webdriver.Chrome(options=chrome_options)
 
-    driver.get(sample_video)
-    driver.delete_all_cookies()
-    driver.refresh()
-    driver.implicitly_wait(1)
+    try:
+        driver.get(sample_video)
+        driver.implicitly_wait(5)
+        
+        # Wait for the video to load and try to click play or just wait for the player to be ready
+        try:
+            play_btn = driver.find_element(By.CSS_SELECTOR, ".ytp-play-button")
+            play_btn.click()
+        except:
+            pass
+        
+        time.sleep(3)
 
-    # press play btn
-    elem = driver.find_element(
-        By.CLASS_NAME, "ytp-large-play-button-red-bg")
-    elem.send_keys(Keys.SPACE)
-    time.sleep(1)
+        # get network log
+        perf = driver.get_log('performance')
 
-    # get network log
-    perf = driver.get_log('performance')
+        # filter log
+        visitorId = None
+        poToken = None
+        for entry in perf:
+            try:
+                log_message = json.loads(entry['message'])
 
-    # filter log
-    visitorId = None
-    poToken = None
-    for entry in perf:
-        log_message = json.loads(entry['message'])
+                postData = log_message.get("message", {}).get(
+                    "params", {}).get("request", {}).get("postData", {})
 
-        postData = log_message.get("message", {}).get(
-            "params", {}).get("request", {}).get("postData", {})
+                if not postData or "poToken" not in postData:
+                    continue
 
-        if "poToken" not in postData:
-            continue
+                postData = json.loads(postData)
 
-        postData = json.loads(postData)
-
-        visitorId = postData['context']['client']['visitorData']
-        poToken = postData['serviceIntegrityDimensions']['poToken']
-        break
-
-    driver.quit()
+                visitorId = postData['context']['client']['visitorData']
+                poToken = postData['serviceIntegrityDimensions']['poToken']
+                break
+            except:
+                continue
+    finally:
+        driver.quit()
 
     if visitorId and poToken:
         # write as json
@@ -394,56 +402,105 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
 
 # دالة جلب معلومات اليوتيوب والجودات المتاحة
 def get_yt_formats(url):
+    # Try yt-dlp first as it's more robust with rate limiting
     try:
-        # محاولة التحميل باستخدام عميل WEB مع PO Token أولاً
-        # ثم التبديل لعملاء آخرين كاحتياط
-        for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
-            try:
-                # في نسخ 2026 من pytubefix يتم التعامل مع PO_TOKEN داخلياً عند استخدام عميل WEB
-                yt = PyTuneYT(
-                    url,
-                    client=client_name,
-                    use_oauth=True,
-                    allow_oauth_cache=True,
-                    token_file='tokens.json'
-                )
-                
-                # Progressive streams (فيديو وصوت معاً - الأسرع والأكثر استقراراً)
-                streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
-                
-                if streams:
-                    formats = []
-                    for s in streams:
+        ydl_opts = _build_ydl_opts()
+        ydl_opts['extract_flat'] = False
+        
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
+            
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and 'formats' in info:
+                formats = []
+                for f in info['formats'][:10]:
+                    if f.get('ext') == 'mp4' and f.get('url'):
+                        res = f.get('resolution', 'N/A')
+                        size = f.get('filesize') or f.get('filesize_approx', 0)
                         formats.append({
-                            'format_id': f"py_{s.itag}",
-                            'ext': 'mp4',
-                            'resolution': f"{s.resolution} ({client_name})",
-                            'filesize': s.filesize
+                            'format_id': f['format_id'],
+                            'ext': f.get('ext', 'mp4'),
+                            'resolution': res,
+                            'filesize': size
                         })
-                    
-                    if formats:
-                        return {
-                            'title': yt.title,
-                            'thumbnail': yt.thumbnail_url,
-                            'formats': formats[:8],
-                            'method': 'pytubefix'
-                        }
-            except Exception as e:
-                print(f"pytubefix client {client_name} failed: {e}")
-                continue
                 
-        return None
+                if formats:
+                    return {
+                        'title': info.get('title', 'Unknown'),
+                        'thumbnail': info.get('thumbnail'),
+                        'formats': formats,
+                        'method': 'yt-dlp'
+                    }
     except Exception as e:
-        print(f"Global pytubefix error: {e}")
-        return None
+        print(f"yt-dlp failed: {e}")
+    
+    # Fallback to pytubefix with delay between attempts
+    import time
+    for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
+        try:
+            time.sleep(1)  # Delay between attempts
+            yt = PyTuneYT(
+                url,
+                client=client_name,
+                use_oauth=False,
+                allow_oauth_cache=True
+            )
+            
+            streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
+            
+            if streams:
+                formats = []
+                for s in streams:
+                    formats.append({
+                        'format_id': f"py_{s.itag}",
+                        'ext': 'mp4',
+                        'resolution': f"{s.resolution} ({client_name})",
+                        'filesize': s.filesize
+                    })
+                
+                if formats:
+                    return {
+                        'title': yt.title,
+                        'thumbnail': yt.thumbnail_url,
+                        'formats': formats[:8],
+                        'method': 'pytubefix'
+                    }
+        except Exception as e:
+            print(f"pytubefix client {client_name} failed: {e}")
+            continue
+            
+    return None
 
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة
 def download_vd(url, format_id=None):
+    # Try yt-dlp first
     try:
-        itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
+        ydl_opts = _build_ydl_opts(format_id)
+        ydl_opts['outtmpl'] = f'{OUTPUT}/%(title)s_%(id)s.%(ext)s'
         
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
+            
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info:
+                file_path = ydl.prepare_filename(info)
+                if os.path.exists(file_path):
+                    safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                    upload_to_supabase(file_path, safe_file_name)
+                    return file_path, info.get('title', 'Video')
+    except Exception as e:
+        print(f"yt-dlp download failed: {e}")
+    
+    # Fallback to pytubefix
+    import time
+    itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
+    
+    try:
         for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
             try:
+                time.sleep(1)
                 yt = PyTuneYT(
                     url,
                     client=client_name,
