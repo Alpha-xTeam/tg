@@ -32,8 +32,22 @@ except ImportError:
 
 # استيراد مكتبة yt-dlp و pytube لتحميل الفيديوهات
 import yt_dlp
+import requests
 from pytubefix import YouTube as PyTuneYT
 from pytubefix.cli import on_progress
+
+# إعدادات yt-dlp المتقدمة (مستوحاة من youtube-downloader-api)
+YTDL_COMMON_PARAMS = {
+    'quiet': True,
+    'no_warnings': True,
+    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-us,en;q=0.5',
+        'Sec-Fetch-Mode': 'navigate',
+    }
+}
 
 # دالة لتوفير PO Token لمكتبة pytubefix
 def po_token_verifier():
@@ -585,10 +599,16 @@ def download_vd(url, format_id=None):
     except Exception as e:
         print(f"Apify download failed: {e}")
 
-    # Fallback to yt-dlp
+    # Fallback to yt-dlp (المحاولات المتقدمة مستوحاة من youtube-downloader-api)
     try:
-        ydl_opts = _build_ydl_opts(format_id)
-        ydl_opts['outtmpl'] = f'{OUTPUT}/%(title)s_%(id)s.%(ext)s'
+        ydl_opts = YTDL_COMMON_PARAMS.copy()
+        specific_opts = _build_ydl_opts(format_id)
+        ydl_opts.update(specific_opts)
+        ydl_opts.update({
+            'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+            'extractor_args': {'youtube': {'player_client': ['web', 'android', 'ios', 'tv']}},
+            'nocheckcertificate': True,
+        })
         
         if os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
@@ -609,18 +629,16 @@ def download_vd(url, format_id=None):
     itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
     
     try:
-        # استخدام OAuth كحل أخير (سيتطلب من المستخدم إدخال كود لمرة واحدة في Terminal السيرفر)
-        # أو يتم تخطي الحظر بالكامل بواسطة Apify/yt-dlp أعلاه
+        # إيقاف استخدام OAuth تماماً لتجنب طلبات الأكواد في الـ Container
+        # والاعتماد بدلاً من ذلك على تبديل الـ Clients لتجاوز الحظر
         for client_name in ['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']:
             try:
                 time.sleep(1)
-                # تفعيل use_oauth=True و allow_oauth_cache=True للطريقة الجديدة
-                # إزالة use_po_token لأنه أصبح قديماً ويسبب مشاكل مع التحديث الجديد
                 yt = PyTuneYT(
                     url,
                     client=client_name,
-                    use_oauth=True,
-                    allow_oauth_cache=True
+                    use_oauth=False,
+                    allow_oauth_cache=False
                 )
                 
                 stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
@@ -1316,26 +1334,28 @@ def format_views(n):
         return f"{n/1_000:.1f}K"
     return str(n)
 
-# دالة البحث في يوتيوب
+# دالة البحث في يوتيوب (باستخدام تقنية مستوحاة من youtube-downloader-api)
 def search_youtube(query):
     try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
+        ydl_opts = YTDL_COMMON_PARAMS.copy()
+        ydl_opts.update({
             'extract_flat': True,
-            'default_search': 'ytsearch10', # جلب أول 10 نتائج
+            'default_search': 'ytsearch10',
             'nocheckcertificate': True,
-            'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
-        }
+            # استخدام عدة عملاء لضمان جلب النتائج بدون حظر
+            'extractor_args': {'youtube': {'player_client': ['web', 'android', 'ios', 'tv']}},
+        })
         
         if os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
             
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # استخدام تقنية ytsearch لجلب النتائج
             info = ydl.extract_info(f"ytsearch10:{query}", download=False)
             results = []
             if 'entries' in info:
                 for entry in info['entries']:
+                    if not entry: continue
                     # نفلتر النتائج لنأخذ الفيديوهات فقط ونستبعد القنوات أو القوائم
                     if entry.get('ie_key') == 'Youtube' or '/watch?v=' in entry.get('url', ''):
                         results.append({
@@ -1344,7 +1364,8 @@ def search_youtube(query):
                             'id': entry.get('id'),
                             'duration': entry.get('duration'),
                             'uploader': entry.get('uploader', 'Unknown'),
-                            'view_count': entry.get('view_count', 0)
+                            'view_count': entry.get('view_count', 0),
+                            'thumbnail': entry.get('thumbnail') or f"https://i.ytimg.com/vi/{entry.get('id')}/hqdefault.jpg"
                         })
             return results
     except Exception as e:
