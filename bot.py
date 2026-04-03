@@ -210,6 +210,9 @@ BOT_TOKEN = "8796280679:AAHa3xHWzUnC5RM83nXNLQ5N1YAdgJbt90Y"
 SUPABASE_URL = "https://dkdxufqgmhigfhnkisdt.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrZHh1ZnFnbWhpZ2Zobmtpc2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTg2NjQsImV4cCI6MjA5MDczNDY2NH0.OATgYnXVzJHR6Vry66r-q0AOTIvLiGRsgKUC7479USQ"
 
+# مفتاح YouTube API v3
+YOUTUBE_API_KEY = "AIzaSyDOSqtnYT8cS25am9_cgmU-QtwvDza91qM"
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # اسم الـ Bucket في Supabase
@@ -413,8 +416,41 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
         ydl_opts['cookiefile'] = COOKIES_FILE
     return ydl_opts
 
+# دالة جلب معلومات اليوتيوب باستخدام Google API كخيار أول
+def get_yt_info_via_api(url):
+    try:
+        # استخراج الـ ID من الرابط
+        import re
+        video_id = None
+        patterns = [r"v=([a-zA-Z0-9_-]+)", r"be/([a-zA-Z0-9_-]+)", r"shorts/([a-zA-Z0-9_-]+)"]
+        for p in patterns:
+            match = re.search(p, url)
+            if match:
+                video_id = match.group(1)
+                break
+        
+        if not video_id: return None
+
+        api_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id={video_id}&key={YOUTUBE_API_KEY}"
+        response = requests.get(api_url, timeout=10)
+        data = response.json()
+        
+        if "items" in data and len(data["items"]) > 0:
+            item = data["items"][0]
+            return {
+                "title": item["snippet"]["title"],
+                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"],
+                "id": video_id
+            }
+    except:
+        pass
+    return None
+
 # دالة جلب معلومات اليوتيوب والجودات المتاحة
 def get_yt_formats(url):
+    # محاولة جلب المعلومات الأساسية من API جوجل أولاً (سريعة ومضمونة من الحظر)
+    api_info = get_yt_info_via_api(url)
+    
     # Try yt-dlp first as it's more robust with rate limiting
     try:
         ydl_opts = _build_ydl_opts()
@@ -440,8 +476,8 @@ def get_yt_formats(url):
                 
                 if formats:
                     return {
-                        'title': info.get('title', 'Unknown'),
-                        'thumbnail': info.get('thumbnail'),
+                        'title': api_info['title'] if api_info else info.get('title', 'Unknown'),
+                        'thumbnail': api_info['thumbnail'] if api_info else info.get('thumbnail'),
                         'formats': formats,
                         'method': 'yt-dlp'
                     }
