@@ -1,0 +1,10 @@
+pyTelegramBotAPI
+pytubefix
+yt-dlp
+requests
+instaloader
+supabase
+postgrest
+storage3
+cloudscraper
+python-dotenv
