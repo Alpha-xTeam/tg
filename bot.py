@@ -373,6 +373,9 @@ def validate_and_fix_cookies(cookie_file):
 # قاموس لتتبع حالة كل مستخدم (رابط الفيديو المختار)
 user_data = {}
 
+# تتبع حالة الاشتراك (لتجنب تكرار إرسال رسالة للمطور)
+user_subscription_notified = set()
+
 
 def _build_ydl_opts(format_id=None, extra_clients=None):
     # استخدام العميل web فقط عند وجود PO Token والعملاء الآخرين كاحتياط
@@ -723,12 +726,29 @@ def start(msg):
         markup.add(btn)
         
         sub_text = (
-            "⚠️ *عذراً عزيزي، يجب عليك الاشتراك أولاً!*\\n\\n"
-            "للاستفادة من خدمات البوت المجانية، يرجى الانضمام إلى قناتنا الرسمية ثم أرسل /start مرة أخرى.\\n\\n"
+            "⚠️ *عذراً عزيزي، يجب عليك الاشتراك أولاً!*\n\n"
+            "للاستفادة من خدمات البوت المجانية، يرجى الانضمام إلى قناتنا الرسمية ثم أرسل /start مرة أخرى.\n\n"
             f"📍 القناة: *{config['channel_id']}*"
         )
         bot.send_message(msg.chat.id, sub_text, reply_markup=markup, parse_mode="Markdown")
         return
+    else:
+        # إذا كان المستخدم قد اشترك للتو ولم يتم إبلاغ المطور من قبل
+        if msg.chat.id not in user_subscription_notified:
+            config = get_config()
+            if config.get("is_force_sub"):
+                try:
+                    sub_info = (
+                        "🔔 *مستخدم جديد دخل عبر القناة!*\n\n"
+                        f"👤 *الاسم:* {msg.from_user.first_name}\n"
+                        f"🔗 *المعرف:* @{msg.from_user.username if msg.from_user.username else 'لا يوجد'}\n"
+                        f"🆔 *الأيدي:* `{msg.from_user.id}`\n"
+                        "✅ تم التحقق من اشتراكه في قناة الاشتراك الإجباري."
+                    )
+                    bot.send_message(ADMIN_ID, sub_info, parse_mode="Markdown")
+                    user_subscription_notified.add(msg.chat.id)
+                except:
+                    pass
 
     welcome_text = (
         f"أهلاً “ {msg.from_user.first_name} “ ☕️،\n\n"
