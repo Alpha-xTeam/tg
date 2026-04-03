@@ -437,7 +437,6 @@ def download_social(url, platform="social"):
         try:
             # استخراج الكود القصير من الرابط (shortcode)
             # مثال: https://www.instagram.com/reels/C42n6f4sy1F/ -> C42n6f4sy1F
-            import re
             match = re.search(r'/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)', url)
             if not match:
                 return [], None
