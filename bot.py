@@ -526,8 +526,8 @@ def get_yt_formats(url):
             yt = PyTuneYT(
                 url,
                 client=client_name,
-                use_oauth=True,
-                allow_oauth_cache=True,
+                use_oauth=False,
+                allow_oauth_cache=False,
                 use_po_token=True,
                 po_token_verifier=lambda: (v_data, p_token)
             )
