@@ -210,6 +210,14 @@ BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ Error: SUPABASE_URL and SUPABASE_KEY must be set in Environment Variables")
+    # محاولة التحميل من ملف .env يدوياً للتأكد في حال لم يتم تحميله تلقائياً
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
 # مفتاح YouTube API v3
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
@@ -219,7 +227,11 @@ APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 apify_client = ApifyClient(APIFY_TOKEN)
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+else:
+    print("❌ Failed to initialize Supabase client: Missing credentials.")
+    supabase = None
 
 # اسم الـ Bucket في Supabase
 STORAGE_BUCKET = "downloads"
