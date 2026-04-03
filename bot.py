@@ -394,8 +394,8 @@ def download_vd(url, format_id=None):
 # دالة تحميل الصوت فقط من يوتيوب
 def download_mp3(url):
     try:
-        # استخدام pytubefix للتحميل الصوتي لتجنب الحظر
-        for client_name in ['WEB', 'TV', 'ANDROID']:
+        # استخدام MWEB (Mobile Web) أو ANDROID_VR للصوت لضمان تجاوز 429
+        for client_name in ['MWEB', 'ANDROID_VR', 'IOS', 'TV']:
             try:
                 yt = PyTuneYT(
                     url,
@@ -405,12 +405,20 @@ def download_mp3(url):
                     allow_oauth_cache=True
                 )
                 
-                audio_stream = yt.streams.get_audio_only()
+                # الحصول على أفضل جودة صوت متاحة
+                audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+                
                 if audio_stream:
                     safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
-                    file_path = audio_stream.download(output_path=OUTPUT, filename=f"{safe_title}.mp3")
+                    # التحميل بصيغة mp4 صوتية أولاً ثم تغيير الاسم (لضمان عمل pytubefix)
+                    temp_file = audio_stream.download(output_path=OUTPUT, filename=f"{safe_title}_raw")
+                    file_path = os.path.join(OUTPUT, f"{safe_title}.mp3")
                     
-                    if os.path.exists(file_path):
+                    # إعادة تسمية الملف ليكون mp3
+                    if os.path.exists(temp_file):
+                        if os.path.exists(file_path): os.remove(file_path)
+                        os.rename(temp_file, file_path)
+                        
                         safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
                         upload_to_supabase(file_path, safe_file_name)
                         return file_path, yt.title
