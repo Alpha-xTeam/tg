@@ -275,7 +275,8 @@ user_data = {}
 
 
 def _build_ydl_opts(format_id=None, extra_clients=None):
-    clients = extra_clients or ['ios', 'web_creator', 'tv']
+    # استخدام العميل web فقط عند وجود PO Token والعملاء الآخرين كاحتياط
+    clients = extra_clients or ['web', 'ios', 'tv']
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -284,17 +285,22 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
             'player_client': clients,
             'player_skip': ['webpage', 'configs', 'js', 'sig'],
         }},
+        # استخدام User-Agent متوافق تماماً مع التوكن المولد
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     }
     
     if YOUTUBE_PO_TOKEN and YOUTUBE_VISITOR_DATA:
-        # التأكد من إضافة بادئة web+ إذا كان التوكن مستخرجاً للمتصفح
         token_value = YOUTUBE_PO_TOKEN
+        # التوكن المولد من الأداة مخصص لعميل الويب (web)
         if not any(token_value.startswith(p) for p in ['web+', 'ios+', 'android+']):
             token_value = f"web+{token_value}"
             
         ydl_opts['extractor_args']['youtube']['po_token'] = [token_value]
         ydl_opts['extractor_args']['youtube']['visitor_data'] = [YOUTUBE_VISITOR_DATA]
+        
+        # عند استخدام PO Token يفضل تعطيل الكوكيز أحياناً لتجنب تضارب الحساب
+        # سنبقيها حالياً ولكن سنضع عميل الويب في المقدمة
+        ydl_opts['extractor_args']['youtube']['player_client'] = ['web']
     
     if format_id:
         ydl_opts['format'] = format_id
