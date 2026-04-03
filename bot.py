@@ -313,141 +313,100 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
 # دالة جلب معلومات اليوتيوب والجودات المتاحة
 def get_yt_formats(url):
     try:
-        # Strategy 1: yt-dlp with multiple clients + PO Token
-        ydl_opts = _build_ydl_opts()
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                formats = []
-                formats.append({
-                    'format_id': 'bestvideo+bestaudio/best',
-                    'ext': 'mp4',
-                    'resolution': 'Best Quality (Auto)',
-                    'filesize': 0
-                })
-                for f in info.get('formats', []):
-                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                        res = f.get('resolution') or (f"{f.get('height')}p" if f.get('height') else "Video")
-                        if any(x['resolution'] == res for x in formats): continue
+        # استخدام pytubefix حصراً مع الكوكيز و PO Token
+        # ملاحظة: pytubefix تدعم الـ po_token في الإصدارات الأخيرة
+        from pytubefix import YouTube as PyTuneYT
+        
+        # اختيار أفضل عميل (WEB_CREATOR أو TV هما الأقل طلباً لتسجيل الدخول)
+        clients = ['WEB_CREATOR', 'TV', 'ANDROID', 'IOS']
+        
+        for client in clients:
+            try:
+                # إعداد اليوتيوبر مع التوكنات المرسلة
+                yt = PyTuneYT(
+                    url,
+                    client=client,
+                    use_oauth=False,
+                    allow_oauth_cache=True,
+                    po_token=YOUTUBE_PO_TOKEN,
+                    visitor_data=YOUTUBE_VISITOR_DATA
+                )
+                
+                # تصفية الصيغ (Progressive تعني فيديو وصوت معاً بجودة تصل لـ 720p)
+                streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
+                
+                if streams:
+                    formats = []
+                    for s in streams:
                         formats.append({
-                            'format_id': f.get('format_id'),
-                            'ext': f.get('ext', 'mp4'),
-                            'resolution': f"{res}",
-                            'filesize': f.get('filesize') or f.get('filesize_approx') or 0
+                            'format_id': f"py_{s.itag}",
+                            'ext': 'mp4',
+                            'resolution': s.resolution,
+                            'filesize': s.filesize
                         })
-                if formats:
-                    return {
-                        'title': info.get('title', 'video'),
-                        'thumbnail': info.get('thumbnail'),
-                        'formats': formats[:8],
-                        'method': 'yt-dlp'
-                    }
-        except Exception as e:
-            print(f"yt-dlp standard failed: {e}")
-
-        # Strategy 2: yt-dlp with android mediaconnect (no bot check)
-        try:
-            ydl_opts_android = _build_ydl_opts(extra_clients=['android_mediaconnect', 'ios'])
-            with yt_dlp.YoutubeDL(ydl_opts_android) as ydl:
-                info = ydl.extract_info(url, download=False)
-                formats = []
-                formats.append({
-                    'format_id': 'bestvideo+bestaudio/best',
-                    'ext': 'mp4',
-                    'resolution': 'Best Quality (Auto)',
-                    'filesize': 0
-                })
-                for f in info.get('formats', []):
-                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                        res = f.get('resolution') or (f"{f.get('height')}p" if f.get('height') else "Video")
-                        if any(x['resolution'] == res for x in formats): continue
-                        formats.append({
-                            'format_id': f.get('format_id'),
-                            'ext': f.get('ext', 'mp4'),
-                            'resolution': f"{res}",
-                            'filesize': f.get('filesize') or f.get('filesize_approx') or 0
-                        })
-                if formats:
-                    return {
-                        'title': info.get('title', 'video'),
-                        'thumbnail': info.get('thumbnail'),
-                        'formats': formats[:8],
-                        'method': 'yt-dlp-android'
-                    }
-        except Exception as e:
-            print(f"yt-dlp android failed: {e}")
-
-        # Strategy 3: pytubefix fallback
-        try:
-            for client in ['WEB_CREATOR', 'TV', 'IOS']:
-                try:
-                    yt = PyTuneYT(url, client=client)
-                    streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
-                    if streams:
-                        formats = []
-                        for s in streams:
-                            formats.append({
-                                'format_id': f"py_{s.itag}",
-                                'ext': 'mp4',
-                                'resolution': f"{s.resolution} (Standard)",
-                                'filesize': s.filesize
-                            })
-                        if formats:
-                            return {
-                                'title': yt.title,
-                                'thumbnail': yt.thumbnail_url,
-                                'formats': formats[:8],
-                                'method': 'pytube'
-                            }
-                        break
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"pytubefix all clients failed: {e}")
-            
+                    
+                    if formats:
+                        return {
+                            'title': yt.title,
+                            'thumbnail': yt.thumbnail_url,
+                            'formats': formats[:8],
+                            'method': 'pytubefix'
+                        }
+            except Exception as e:
+                print(f"pytubefix client {client} failed: {e}")
+                continue
+                
         return None
     except Exception as e:
-        print(f"Error fetching YT formats: {e}")
+        print(f"Global pytubefix error: {e}")
         return None
 
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة
 def download_vd(url, format_id=None):
     try:
-        # إذا كان التحميل عبر pytubefix
-        if format_id and format_id.startswith("py_"):
-            try:
-                itag = int(format_id.split("_")[1])
-                for client in ['TV', 'WEB_CREATOR', 'IOS']:
-                    try:
-                        yt = PyTuneYT(url, client=client)
-                        stream = yt.streams.get_by_itag(itag)
-                        if stream:
-                            safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
-                            file_path = stream.download(output_path=OUTPUT, filename=f"{safe_title}.mp4")
-                            if os.path.exists(file_path):
-                                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                                upload_to_supabase(file_path, safe_file_name)
-                                return file_path, safe_title
-                    except Exception:
-                        continue
-            except Exception as e:
-                print(f"pytubefix download failed: {e}")
-            return None, None
-
-        # التحميل باستخدام yt-dlp
-        if not format_id:
-            format_id = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+        from pytubefix import YouTube as PyTuneYT
         
-        # Try with PO Token + cookies first, then without
-        for use_auth in [True, False]:
-            ydl_opts = _build_ydl_opts(format_id)
-            if not use_auth:
-                ydl_opts.pop('cookiefile', None)
-                if 'po_token' in ydl_opts.get('extractor_args', {}).get('youtube', {}):
-                    del ydl_opts['extractor_args']['youtube']['po_token']
-                if 'visitor_data' in ydl_opts.get('extractor_args', {}).get('youtube', {}):
-                    del ydl_opts['extractor_args']['youtube']['visitor_data']
-            ydl_opts['outtmpl'] = f'{OUTPUT}/%(title)s.%(ext)s'
+        # استخراج الـ itag من المعرف
+        itag = None
+        if format_id and format_id.startswith("py_"):
+            itag = int(format_id.split("_")[1])
+        
+        # محاولة التحميل باستخدام العملاء المتاحين
+        for client in ['WEB_CREATOR', 'TV', 'ANDROID', 'IOS']:
+            try:
+                yt = PyTuneYT(
+                    url,
+                    client=client,
+                    use_oauth=False,
+                    allow_oauth_cache=True,
+                    po_token=YOUTUBE_PO_TOKEN,
+                    visitor_data=YOUTUBE_VISITOR_DATA
+                )
+                
+                # اختيار الجودة المحددة أو الأفضل تلقائياً
+                if itag:
+                    stream = yt.streams.get_by_itag(itag)
+                else:
+                    stream = yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
+                
+                if stream:
+                    # تنظيف اسم الملف من الرموز غير المسموحة
+                    safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
+                    file_path = stream.download(output_path=OUTPUT, filename=f"{safe_title}.mp4")
+                    
+                    if os.path.exists(file_path):
+                        # رفع الملف إلى Supabase
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        return file_path, yt.title
+            except Exception as e:
+                print(f"pytubefix download client {client} failed: {e}")
+                continue
+                
+        return None, None
+    except Exception as e:
+        print(f"Error in download_vd: {e}")
+        return None, None
             ydl_opts['merge_output_format'] = 'mp4'
             
             try:
