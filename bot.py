@@ -252,8 +252,10 @@ STORAGE_BUCKET = "downloads"
 
 def delete_from_supabase(file_name):
     try:
-        supabase.storage.from_(STORAGE_BUCKET).remove([file_name])
-        print(f"File {file_name} deleted from Supabase after sending.")
+        if not supabase: return
+        res = supabase.storage.from_(STORAGE_BUCKET).remove([file_name])
+        # التحقق مما إذا كان الحذف ناجحاً أو إذا كانت هناك أخطاء مخفية
+        print(f"File {file_name} delete response: {res}")
     except Exception as e:
         print(f"Delete error: {e}")
 
@@ -306,6 +308,14 @@ def update_config(new_config):
         supabase.table("config").update(new_config).eq("id", 1).execute()
     except Exception as e:
         print(f"Error updating config: {e}")
+
+def increment_stat(stat_name):
+    try:
+        config = get_config()
+        current_value = config.get(stat_name, 0)
+        supabase.table("config").update({stat_name: current_value + 1}).eq("id", 1).execute()
+    except Exception as e:
+        print(f"Error incrementing {stat_name}: {e}")
 
 def check_sub(user_id):
     config = get_config()
@@ -816,6 +826,30 @@ def download_social(url, platform="social"):
         print(f"{platform} Download Error: {e}")
         return [], None
 
+# أمر الإحصائيات للمطور
+@bot.message_handler(commands=['stats'])
+def show_stats(msg):
+    if str(msg.from_user.id) != str(ADMIN_ID):
+        return
+        
+    config = get_config()
+    total_users = len(get_all_users())
+    yt_count = config.get("youtube_count", 0)
+    insta_count = config.get("insta_count", 0)
+    tiktok_count = config.get("tiktok_count", 0)
+    
+    stats_text = (
+        "📊 *إحصائيات البوت الكاملة*\n\n"
+        f"👥 *عدد المستخدمين:* `{total_users}`\n"
+        "━━━━━━━━━━━━━━━\n"
+        "📥 *عمليات التحميل:*\n"
+        f"📺 *يوتيوب:* `{yt_count}`\n"
+        f"📸 *انستقرام:* `{insta_count}`\n"
+        f"🎵 *تيك توك:* `{tiktok_count}`\n"
+        "━━━━━━━━━━━━━━━\n"
+        f"📈 *الإجمالي:* `{yt_count + insta_count + tiktok_count}`"
+    )
+    bot.reply_to(msg, stats_text, parse_mode="Markdown")
 
 # التعامل مع أمر /start
 @bot.message_handler(commands=['start', 'help'])
@@ -1022,6 +1056,9 @@ def handle_youtube_url(msg):
     url = msg.text.strip()
     chat_id = msg.chat.id
     
+    # زيادة إحصائيات يوتيوب
+    increment_stat("youtube_count")
+    
     # حفظ الرابط مؤقتاً للمستخدم
     user_data[chat_id] = url
     
@@ -1069,8 +1106,10 @@ def handle_social_url(msg):
     
     if "instagram.com" in url:
         platform = "انستقرام"
+        increment_stat("insta_count")
     elif "tiktok.com" in url:
         platform = "تيك توك"
+        increment_stat("tiktok_count")
     elif "soundcloud.com" in url:
         platform = "ساوند كلاود"
     else:
