@@ -213,6 +213,11 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 # مفتاح YouTube API v3
 YOUTUBE_API_KEY = "AIzaSyDOSqtnYT8cS25am9_cgmU-QtwvDza91qM"
 
+# إعدادات Apify
+from apify_client import ApifyClient
+APIFY_TOKEN = "apify_api_ANJ5WKqQqNM23X5Ck18QvaEt1cHvkb42Tyqp"
+apify_client = ApifyClient(APIFY_TOKEN)
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # اسم الـ Bucket في Supabase
@@ -527,7 +532,47 @@ def get_yt_formats(url):
 
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة
 def download_vd(url, format_id=None):
-    # Try yt-dlp first
+    # محاولة التحميل باستخدام Apify كخيار أول (لتجاوز حظر يوتيوب)
+    try:
+        quality = "720p" # افتراضي
+        if format_id:
+            # محاولة استنتاج الجودة من format_id إذا كان يحتوي على أرقام
+            res_match = re.search(r'(\d{3,4})p?', str(format_id))
+            if res_match:
+                quality = f"{res_match.group(1)}p"
+
+        run_input = {
+            "videos": [{ "url": url }],
+            "preferredQuality": quality,
+            "preferredFormat": "mp4",
+            "filenameTemplateParts": ["title"],
+        }
+        
+        # تشغيل الـ Actor (UUhJDfKJT2SsXdclR)
+        run = apify_client.actor("UUhJDfKJT2SsXdclR").call(run_input=run_input, timeout_secs=300)
+        
+        # جلب النتائج من الـ dataset
+        for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
+            if "downloadUrl" in item or "url" in item:
+                # الـ Apify يعطينا رابط مباشر، يمكننا تحميله ورفعه لـ Supabase
+                final_url = item.get("downloadUrl") or item.get("url")
+                title = item.get("title", "Video")
+                
+                # تحميل الملف محلياً للمجلد المؤقت
+                response = requests.get(final_url, stream=True)
+                file_path = os.path.join(OUTPUT, f"{re.sub(r'[^a-zA-Z0-9]', '_', title)}.mp4")
+                with open(file_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                if os.path.exists(file_path):
+                    safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                    upload_to_supabase(file_path, safe_file_name)
+                    return file_path, title
+    except Exception as e:
+        print(f"Apify download failed: {e}")
+
+    # Fallback to yt-dlp
     try:
         ydl_opts = _build_ydl_opts(format_id)
         ydl_opts['outtmpl'] = f'{OUTPUT}/%(title)s_%(id)s.%(ext)s'

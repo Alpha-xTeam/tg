@@ -11,3 +11,4 @@ python-dotenv
 selenium
 webdriver-manager
 nodejs-wheel-binaries
+apify-client
