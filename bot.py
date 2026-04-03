@@ -41,6 +41,28 @@ OUTPUT = "/tmp/downloads"
 
 # جلب ملف الكوكيز من رابط خارجي وتخزينه
 COOKIES_FILE = "cookies.txt"
+
+def validate_and_fix_cookies(file_path):
+    """تحقق من صلاحية ملف الكوكيز وإصلاح أي تنسيق مفقود"""
+    if not os.path.exists(file_path):
+        return False
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # التأكد من وجود الهيدر المطلوب لـ yt-dlp
+        header = "# Netscape HTTP Cookie File"
+        if lines and header not in lines[0]:
+            lines.insert(0, f"{header}\n# This is a fixed file\n\n")
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            return True
+            
+        # التحقق من وجود بيانات (على الأقل 4 أسطر مع الهيدر)
+        return len(lines) > 3
+    except Exception:
+        return False
+
 def update_cookies_from_url():
     if os.path.exists(COOKIES_FILE):
         if validate_and_fix_cookies(COOKIES_FILE):
