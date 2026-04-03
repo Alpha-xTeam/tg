@@ -203,19 +203,19 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 import json
 
-# توكن البوت (ضع التوكن الحقيقي هنا)
-BOT_TOKEN = "8796280679:AAHa3xHWzUnC5RM83nXNLQ5N1YAdgJbt90Y"
+# توكن البوت
+BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# إعدادات Supabase (سيتم تعبئتها من قبل المطور)
-SUPABASE_URL = "https://dkdxufqgmhigfhnkisdt.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrZHh1ZnFnbWhpZ2Zobmtpc2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTg2NjQsImV4cCI6MjA5MDczNDY2NH0.OATgYnXVzJHR6Vry66r-q0AOTIvLiGRsgKUC7479USQ"
+# إعدادات Supabase
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 # مفتاح YouTube API v3
-YOUTUBE_API_KEY = "AIzaSyDOSqtnYT8cS25am9_cgmU-QtwvDza91qM"
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
 # إعدادات Apify
 from apify_client import ApifyClient
-APIFY_TOKEN = "apify_api_ANJ5WKqQqNM23X5Ck18QvaEt1cHvkb42Tyqp"
+APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 apify_client = ApifyClient(APIFY_TOKEN)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -255,7 +255,7 @@ if not BOT_TOKEN:
 MAX_SIZE = 50 * 1024 * 1024
 
 # إعدادات الأدمن
-ADMIN_ID = 949712684
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 949712684))
 
 # إعدادات افتراضية
 default_config = {
