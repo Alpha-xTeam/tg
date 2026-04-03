@@ -216,6 +216,7 @@ YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 # إعدادات Apify
 from apify_client import ApifyClient
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
+ADMIN_ID = os.environ.get("ADMIN_ID")
 apify_client = ApifyClient(APIFY_TOKEN)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
