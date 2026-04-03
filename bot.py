@@ -319,13 +319,14 @@ def get_yt_formats(url):
     try:
         # محاولة التحميل باستخدام عميل WEB مع PO Token أولاً
         # ثم التبديل لعملاء آخرين كاحتياط
-        for client_name in ['WEB', 'WEB_CREATOR', 'TV', 'IOS']:
+        for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
             try:
+                # في نسخ 2026 من pytubefix يتم التعامل مع PO_TOKEN داخلياً عند استخدام عميل WEB
                 yt = PyTuneYT(
                     url,
                     client=client_name,
-                    use_po_token=True if YOUTUBE_PO_TOKEN else False,
-                    po_token_verifier=po_token_verifier if YOUTUBE_PO_TOKEN else None
+                    use_oauth=False,
+                    allow_oauth_cache=True
                 )
                 
                 # Progressive streams (فيديو وصوت معاً - الأسرع والأكثر استقراراً)
@@ -362,13 +363,13 @@ def download_vd(url, format_id=None):
     try:
         itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
         
-        for client_name in ['WEB', 'WEB_CREATOR', 'TV', 'IOS', 'ANDROID']:
+        for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
             try:
                 yt = PyTuneYT(
                     url,
                     client=client_name,
-                    use_po_token=True if YOUTUBE_PO_TOKEN else False,
-                    po_token_verifier=po_token_verifier if YOUTUBE_PO_TOKEN else None
+                    use_oauth=False,
+                    allow_oauth_cache=True
                 )
                 
                 stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
@@ -400,8 +401,8 @@ def download_mp3(url):
                     url,
                     on_progress_callback=on_progress,
                     client=client_name,
-                    use_po_token=True if YOUTUBE_PO_TOKEN else False,
-                    po_token_verifier=po_token_verifier if YOUTUBE_PO_TOKEN else None
+                    use_oauth=False,
+                    allow_oauth_cache=True
                 )
                 
                 audio_stream = yt.streams.get_audio_only()
