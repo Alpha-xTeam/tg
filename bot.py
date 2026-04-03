@@ -200,8 +200,12 @@ apihelper.READ_TIMEOUT = 120
 os.makedirs(OUTPUT, exist_ok=True)
 
 # إعدادات البروكسي لتجاوز حظر يوتيوب (اختياري)
-# يمكنك وضع رابط بروكسي هنا مثل: "http://username:password@proxybase:port"
 PROXY = None 
+
+# إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
+# يمكنك تركها None إذا كنت لا تملكها، لكن يفضل استخراجها من المتصفح
+YOUTUBE_PO_TOKEN = None
+YOUTUBE_VISITOR_DATA = None
 
 # قاموس لتتبع حالة كل مستخدم (رابط الفيديو المختار)
 user_data = {}
@@ -216,9 +220,10 @@ def get_yt_formats(url):
             'no_warnings': True,
             'nocheckcertificate': True,
             'extractor_args': {'youtube': {
-                'player_client': ['ios'],
+                'player_client': ['ios', 'tv', 'android_vr', 'web_creator'],
                 'player_skip': ['webpage', 'configs', 'js', 'sig'],
-                'skip': ['hls', 'dash']
+                'po_token': [YOUTUBE_PO_TOKEN] if YOUTUBE_PO_TOKEN else None,
+                'visitor_data': [YOUTUBE_VISITOR_DATA] if YOUTUBE_VISITOR_DATA else None,
             }},
             'user_agent': 'com.google.ios.youtube/19.42.1 (iPhone15,2; U; CPU iOS 17_4 like Mac OS X; en_US)',
             'source_address': '0.0.0.0',
@@ -340,10 +345,12 @@ def download_vd(url, format_id=None):
             'nocheckcertificate': True,
             'merge_output_format': 'mp4',
             'extractor_args': {'youtube': {
-                'player_client': ['tv', 'android_vr'],
-                'player_skip': ['webpage', 'configs']
+                'player_client': ['ios', 'tv', 'web_creator'],
+                'player_skip': ['webpage', 'configs', 'js', 'sig'],
+                'po_token': [YOUTUBE_PO_TOKEN] if YOUTUBE_PO_TOKEN else None,
+                'visitor_data': [YOUTUBE_VISITOR_DATA] if YOUTUBE_VISITOR_DATA else None,
             }},
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'user_agent': 'com.google.ios.youtube/19.42.1 (iPhone15,2; U; CPU iOS 17_4 like Mac OS X; en_US)',
             'source_address': '0.0.0.0'
         }
         
@@ -385,10 +392,12 @@ def download_mp3(url):
             'no_warnings': True,
             'nocheckcertificate': True,
             'extractor_args': {'youtube': {
-                'player_client': ['tv', 'android_vr'],
-                'player_skip': ['webpage', 'configs']
+                'player_client': ['ios', 'tv', 'web_creator'],
+                'player_skip': ['webpage', 'configs', 'js', 'sig'],
+                'po_token': [YOUTUBE_PO_TOKEN] if YOUTUBE_PO_TOKEN else None,
+                'visitor_data': [YOUTUBE_VISITOR_DATA] if YOUTUBE_VISITOR_DATA else None,
             }},
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'user_agent': 'com.google.ios.youtube/19.42.1 (iPhone15,2; U; CPU iOS 17_4 like Mac OS X; en_US)',
             'source_address': '0.0.0.0'
         }
         
