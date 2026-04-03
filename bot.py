@@ -37,7 +37,78 @@ from pytubefix.cli import on_progress
 
 # دالة لتوفير PO Token لمكتبة pytubefix
 def po_token_verifier():
+    # محاولة تحميل من الملف أولاً
+    visitor_data, po_token = load_token_from_file()
+    if visitor_data and po_token:
+        return visitor_data, po_token
+    # إلا فاستخدم الافتراضي
     return YOUTUBE_VISITOR_DATA, YOUTUBE_PO_TOKEN
+
+# دالة توليد PO Token جديد باستخدام Selenium
+def regenerate_network_token():
+    sample_video = "https://www.youtube.com/embed/aqz-KE-bpKQ"
+
+    chrome_options = Options()
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument('--incognito')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.set_capability(
+        'goog:loggingPrefs', {'performance': 'ALL'})
+
+    driver = webdriver.Chrome(options=chrome_options)
+
+    driver.get(sample_video)
+    driver.delete_all_cookies()
+    driver.refresh()
+    driver.implicitly_wait(1)
+
+    # press play btn
+    elem = driver.find_element(
+        By.CLASS_NAME, "ytp-large-play-button-red-bg")
+    elem.send_keys(Keys.SPACE)
+    time.sleep(1)
+
+    # get network log
+    perf = driver.get_log('performance')
+
+    # filter log
+    visitorId = None
+    poToken = None
+    for entry in perf:
+        log_message = json.loads(entry['message'])
+
+        postData = log_message.get("message", {}).get(
+            "params", {}).get("request", {}).get("postData", {})
+
+        if "poToken" not in postData:
+            continue
+
+        postData = json.loads(postData)
+
+        visitorId = postData['context']['client']['visitorData']
+        poToken = postData['serviceIntegrityDimensions']['poToken']
+        break
+
+    driver.quit()
+
+    if visitorId and poToken:
+        # write as json
+        with open("token.json", 'w', encoding='utf-8') as f:
+            json.dump({"visitorData": visitorId, "po_token": poToken},
+                      f, ensure_ascii=False, indent=4)
+        return visitorId, poToken
+    else:
+        return None, None
+
+# دالة قراءة التوكن من الملف
+def load_token_from_file():
+    try:
+        with open("token.json", 'r', encoding='utf-8') as f:
+            token_file = json.load(f)
+        return token_file['visitorData'], token_file['po_token']
+    except:
+        return None, None
 
 # مجلد حفظ الملفات المحملة
 # نستخدم /tmp لدعم الاستضافات التي تملك نظام ملفات للقراءة فقط
@@ -106,6 +177,13 @@ L = instaloader.Instaloader(
     compress_json=False
 )
 
+
+# استيراد selenium لتوليد PO Token
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
+import json
 
 # توكن البوت (ضع التوكن الحقيقي هنا)
 BOT_TOKEN = "8796280679:AAHa3xHWzUnC5RM83nXNLQ5N1YAdgJbt90Y"
@@ -325,8 +403,9 @@ def get_yt_formats(url):
                 yt = PyTuneYT(
                     url,
                     client=client_name,
-                    use_oauth=False,
-                    allow_oauth_cache=True
+                    use_oauth=True,
+                    allow_oauth_cache=True,
+                    token_file='tokens.json'
                 )
                 
                 # Progressive streams (فيديو وصوت معاً - الأسرع والأكثر استقراراً)
@@ -368,8 +447,9 @@ def download_vd(url, format_id=None):
                 yt = PyTuneYT(
                     url,
                     client=client_name,
-                    use_oauth=False,
-                    allow_oauth_cache=True
+                    use_oauth=True,
+                    allow_oauth_cache=True,
+                    token_file='tokens.json'
                 )
                 
                 stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
@@ -601,6 +681,7 @@ def start(msg):
         markup.add("📢 اشتراك إجباري", "🔧 إعدادات القناة")
         markup.add("📝 جلب ملف users.json", "📂 جلب ملف config.json")
         markup.add("🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم")
+        markup.add("🔄 تحديث PO Token")
         welcome_text += "\n\n🛠️ *مرحباً أيها المطور، يمكنك التحكم بالبوت أدناه:* "
 
     bot.send_message(msg.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
@@ -609,7 +690,7 @@ def start(msg):
 # لوحة تحكم الأدمن
 @bot.message_handler(func=lambda msg: msg.chat.id == ADMIN_ID and msg.text in [
     "📊 إحصائيات", "📢 إذاعة", "📢 اشتراك إجباري", "🔧 إعدادات القناة",
-    "📝 جلب ملف users.json", "📂 جلب ملف config.json", "🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم"
+    "📝 جلب ملف users.json", "📂 جلب ملف config.json", "🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم", "🔄 تحديث PO Token"
 ])
 def admin_panel(msg):
     config = get_config()
@@ -664,6 +745,17 @@ def admin_panel(msg):
     elif msg.text == "🚫 حظر مستخدم":
         bot.reply_to(msg, "🆔 أرسل أيدي المستخدم الذي تريد حظره:")
         bot.register_next_step_handler(msg, block_user_step)
+
+    elif msg.text == "🔄 تحديث PO Token":
+        bot.reply_to(msg, "⏳ جاري توليد PO Token جديد، يرجى الانتظار...")
+        try:
+            visitor_data, po_token = regenerate_network_token()
+            if visitor_data and po_token:
+                bot.send_message(msg.chat.id, f"✅ تم توليد PO Token جديد بنجاح!\n\n🔑 Visitor Data: `{visitor_data}`\n🔑 PO Token: `{po_token}`\n\nانسخ هذه القيم وحدث المتغيرات البيئية أو الكود يدوياً ليتم استخدامها في التحميلات.", parse_mode="Markdown")
+            else:
+                bot.reply_to(msg, "❌ فشل في توليد PO Token. تأكد من تثبيت Chrome driver.")
+        except Exception as e:
+            bot.reply_to(msg, f"❌ خطأ: {str(e)}")
 
 def block_user_step(msg):
     try:
