@@ -40,9 +40,9 @@ def po_token_verifier():
     # محاولة تحميل من الملف أولاً
     visitor_data, po_token = load_token_from_file()
     if visitor_data and po_token:
-        return {"visitorData": visitor_data, "poToken": po_token}
+        return visitor_data, po_token
     # إلا فاستخدم الافتراضي
-    return {"visitorData": YOUTUBE_VISITOR_DATA, "poToken": YOUTUBE_PO_TOKEN}
+    return YOUTUBE_VISITOR_DATA, YOUTUBE_PO_TOKEN
 
 # دالة توليد PO Token جديد باستخدام Selenium
 def regenerate_network_token():
@@ -489,15 +489,15 @@ def get_yt_formats(url):
     for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
         try:
             time.sleep(1)  # Delay between attempts
-            # استخدام تابع التحقق من التوكن مع pytubefix
-            token_params = po_token_verifier()
+            # الحصول على بيانات التوكن
+            v_data, p_token = po_token_verifier()
             yt = PyTuneYT(
                 url,
                 client=client_name,
                 use_oauth=False,
                 allow_oauth_cache=True,
                 use_po_token=True,
-                token_file=token_params
+                po_token_verifier=lambda: (v_data, p_token)
             )
             
             streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
@@ -551,7 +551,7 @@ def download_vd(url, format_id=None):
     itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
     
     try:
-        token_params = po_token_verifier()
+        v_data, p_token = po_token_verifier()
         for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
             try:
                 time.sleep(1)
@@ -561,7 +561,7 @@ def download_vd(url, format_id=None):
                     use_oauth=True,
                     allow_oauth_cache=True,
                     use_po_token=True,
-                    token_file=token_params
+                    po_token_verifier=lambda: (v_data, p_token)
                 )
                 
                 stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
