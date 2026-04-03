@@ -35,6 +35,10 @@ import yt_dlp
 from pytubefix import YouTube as PyTuneYT
 from pytubefix.cli import on_progress
 
+# دالة لتوفير PO Token لمكتبة pytubefix
+def po_token_verifier():
+    return YOUTUBE_VISITOR_DATA, YOUTUBE_PO_TOKEN
+
 # مجلد حفظ الملفات المحملة
 # نستخدم /tmp لدعم الاستضافات التي تملك نظام ملفات للقراءة فقط
 OUTPUT = "/tmp/downloads"
@@ -313,26 +317,18 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
 # دالة جلب معلومات اليوتيوب والجودات المتاحة
 def get_yt_formats(url):
     try:
-        # استخدام pytubefix حصراً مع الكوكيز و PO Token
-        # ملاحظة: pytubefix تدعم الـ po_token في الإصدارات الأخيرة
-        from pytubefix import YouTube as PyTuneYT
-        
-        # اختيار أفضل عميل (WEB_CREATOR أو TV هما الأقل طلباً لتسجيل الدخول)
-        clients = ['WEB_CREATOR', 'TV', 'ANDROID', 'IOS']
-        
-        for client in clients:
+        # محاولة التحميل باستخدام عميل WEB مع PO Token أولاً
+        # ثم التبديل لعملاء آخرين كاحتياط
+        for client_name in ['WEB', 'WEB_CREATOR', 'TV', 'IOS']:
             try:
-                # إعداد اليوتيوبر مع التوكنات المرسلة
                 yt = PyTuneYT(
                     url,
-                    client=client,
-                    use_oauth=False,
-                    allow_oauth_cache=True,
-                    po_token=YOUTUBE_PO_TOKEN,
-                    visitor_data=YOUTUBE_VISITOR_DATA
+                    client=client_name,
+                    use_po_token=True if YOUTUBE_PO_TOKEN else False,
+                    po_token_verifier=po_token_verifier if YOUTUBE_PO_TOKEN else None
                 )
                 
-                # تصفية الصيغ (Progressive تعني فيديو وصوت معاً بجودة تصل لـ 720p)
+                # Progressive streams (فيديو وصوت معاً - الأسرع والأكثر استقراراً)
                 streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
                 
                 if streams:
@@ -341,7 +337,7 @@ def get_yt_formats(url):
                         formats.append({
                             'format_id': f"py_{s.itag}",
                             'ext': 'mp4',
-                            'resolution': s.resolution,
+                            'resolution': f"{s.resolution} ({client_name})",
                             'filesize': s.filesize
                         })
                     
@@ -353,7 +349,7 @@ def get_yt_formats(url):
                             'method': 'pytubefix'
                         }
             except Exception as e:
-                print(f"pytubefix client {client} failed: {e}")
+                print(f"pytubefix client {client_name} failed: {e}")
                 continue
                 
         return None
@@ -364,105 +360,66 @@ def get_yt_formats(url):
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة
 def download_vd(url, format_id=None):
     try:
-        from pytubefix import YouTube as PyTuneYT
+        itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
         
-        # استخراج الـ itag من المعرف
-        itag = None
-        if format_id and format_id.startswith("py_"):
-            itag = int(format_id.split("_")[1])
-        
-        # محاولة التحميل باستخدام العملاء المتاحين
-        for client in ['WEB_CREATOR', 'TV', 'ANDROID', 'IOS']:
+        for client_name in ['WEB', 'WEB_CREATOR', 'TV', 'IOS', 'ANDROID']:
             try:
                 yt = PyTuneYT(
                     url,
-                    client=client,
-                    use_oauth=False,
-                    allow_oauth_cache=True,
-                    po_token=YOUTUBE_PO_TOKEN,
-                    visitor_data=YOUTUBE_VISITOR_DATA
+                    client=client_name,
+                    use_po_token=True if YOUTUBE_PO_TOKEN else False,
+                    po_token_verifier=po_token_verifier if YOUTUBE_PO_TOKEN else None
                 )
                 
-                # اختيار الجودة المحددة أو الأفضل تلقائياً
-                if itag:
-                    stream = yt.streams.get_by_itag(itag)
-                else:
-                    stream = yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
+                stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
                 
                 if stream:
-                    # تنظيف اسم الملف من الرموز غير المسموحة
                     safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
                     file_path = stream.download(output_path=OUTPUT, filename=f"{safe_title}.mp4")
                     
                     if os.path.exists(file_path):
-                        # رفع الملف إلى Supabase
                         safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
                         upload_to_supabase(file_path, safe_file_name)
                         return file_path, yt.title
             except Exception as e:
-                print(f"pytubefix download client {client} failed: {e}")
+                print(f"pytubefix download client {client_name} failed: {e}")
                 continue
                 
         return None, None
     except Exception as e:
         print(f"Error in download_vd: {e}")
         return None, None
-            ydl_opts['merge_output_format'] = 'mp4'
-            
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    file_path = ydl.prepare_filename(info)
-                    if not os.path.exists(file_path):
-                        file_path = file_path.rsplit('.', 1)[0] + ".mp4"
-                    if os.path.exists(file_path):
-                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                        upload_to_supabase(file_path, safe_file_name)
-                        return file_path, info.get('title', 'video')
-            except Exception as e:
-                print(f"yt-dlp download (auth={use_auth}) failed: {e}")
-                continue
-                
-        return None, None
-    except Exception as e:
-        print(f"Error downloading VD: {e}")
-        if "Requested format is not available" in str(e) and format_id != 'best':
-            return download_vd(url, 'best')
-        return None, None
 
 # دالة تحميل الصوت فقط من يوتيوب
 def download_mp3(url):
     try:
-        ydl_opts = _build_ydl_opts('bestaudio/best')
-        ydl_opts['outtmpl'] = f'{OUTPUT}/%(title)s.%(ext)s'
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
-            if not os.path.exists(file_path):
-                file_path = os.path.splitext(file_path)[0] + ".mp3"
-            
-            print("YouTube MP3 Download Success!")
-            return file_path
+        # استخدام pytubefix للتحميل الصوتي لتجنب الحظر
+        for client_name in ['WEB', 'TV', 'ANDROID']:
+            try:
+                yt = PyTuneYT(
+                    url,
+                    on_progress_callback=on_progress,
+                    client=client_name,
+                    use_po_token=True if YOUTUBE_PO_TOKEN else False,
+                    po_token_verifier=po_token_verifier if YOUTUBE_PO_TOKEN else None
+                )
+                
+                audio_stream = yt.streams.get_audio_only()
+                if audio_stream:
+                    safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
+                    file_path = audio_stream.download(output_path=OUTPUT, filename=f"{safe_title}.mp3")
+                    
+                    if os.path.exists(file_path):
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        return file_path, yt.title
+            except Exception as e:
+                print(f"pytubefix audio download client {client_name} failed: {e}")
+                continue
+        return None, None
     except Exception as e:
-        print(f"MP3 download with auth failed: {e}")
-        try:
-            ydl_opts_simple = {
-                'format': 'bestaudio/best',
-                'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
-                'quiet': True,
-            }
-            with yt_dlp.YoutubeDL(ydl_opts_simple) as ydl:
-                info = ydl.extract_info(url, download=True)
-                return ydl.prepare_filename(info)
-        except:
-            print(f"YouTube MP3 Error: {e}")
-            return None
+        print(f"Error in download_mp3: {e}")
+        return None, None
 
 
 # دالة تحميل فيديو أو صور من تيك توك أو انستقرام
@@ -1034,10 +991,16 @@ def callback_download(call):
              status_msg = call.message
 
         try:
-            file_path = download_mp3(url)
+            result = download_mp3(url)
+            if isinstance(result, tuple):
+                file_path, title = result
+            else:
+                file_path = result
+                title = "Audio"
+
             if file_path and os.path.exists(file_path):
                 with open(file_path, "rb") as f:
-                    bot.send_audio(chat_id, f, caption="✅ تم تحويل الصوت بنجاح", timeout=300)
+                    bot.send_audio(chat_id, f, caption=f"✅ {title}", timeout=300)
                 
                 # حذف الملف من الستورج بعد الإرسال
                 file_name_only = os.path.basename(file_path)
@@ -1233,5 +1196,11 @@ def handle_other_messages(msg):
 # طباعة رسالة في الكونسول
 print("The bot is running..")
 
-# تشغيل البوت باستمرار
-bot.infinity_polling(timeout=60, long_polling_timeout=60)
+# تشغيل البوت باستمرار مع معالجة الأخطاء لتجنب Conflict 409
+import time
+while True:
+    try:
+        bot.polling(none_stop=True, timeout=60, long_polling_timeout=60)
+    except Exception as e:
+        print(f"Error in polling: {e}")
+        time.sleep(15)  # انتظار 15 ثانية قبل إعادة المحاولة لتجنب الـ Conflict
