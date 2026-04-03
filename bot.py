@@ -486,7 +486,7 @@ def get_yt_formats(url):
     
     # Fallback to pytubefix with delay between attempts
     import time
-    for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
+    for client_name in ['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']:
         try:
             time.sleep(1)  # Delay between attempts
             # الحصول على بيانات التوكن
@@ -494,7 +494,7 @@ def get_yt_formats(url):
             yt = PyTuneYT(
                 url,
                 client=client_name,
-                use_oauth=False,
+                use_oauth=True,
                 allow_oauth_cache=True,
                 use_po_token=True,
                 po_token_verifier=lambda: (v_data, p_token)
@@ -552,7 +552,7 @@ def download_vd(url, format_id=None):
     
     try:
         v_data, p_token = po_token_verifier()
-        for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
+        for client_name in ['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']:
             try:
                 time.sleep(1)
                 yt = PyTuneYT(
