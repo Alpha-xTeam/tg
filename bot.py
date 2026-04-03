@@ -210,17 +210,22 @@ user_data = {}
 # دالة جلب معلومات اليوتيوب والجودات المتاحة
 def get_yt_formats(url):
     try:
-        # المحاولة الأولى: باستخدام yt-dlp مع عملاء التلفاز
+        # الحل الجديد لعام 2026 - العميل IOS يعمل بدون تسجيل دخول
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
             'extractor_args': {'youtube': {
-                'player_client': ['tv', 'android_vr', 'web_creator'], 
-                'player_skip': ['webpage', 'configs']
+                'player_client': ['ios'],
+                'player_skip': ['webpage', 'configs', 'js', 'sig'],
+                'skip': ['hls', 'dash']
             }},
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            'source_address': '0.0.0.0'
+            'user_agent': 'com.google.ios.youtube/19.42.1 (iPhone15,2; U; CPU iOS 17_4 like Mac OS X; en_US)',
+            'source_address': '0.0.0.0',
+            'http_headers': {
+                'X-Youtube-Client-Name': '5',
+                'X-Youtube-Client-Version': '19.42.1'
+            }
         }
         
         # إضافة البروكسي إذا كان موجوداً
