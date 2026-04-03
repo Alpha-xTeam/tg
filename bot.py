@@ -48,66 +48,73 @@ def po_token_verifier():
 def regenerate_network_token():
     sample_video = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
 
-    chrome_options = Options()
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument('--incognito')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
-    chrome_options.set_capability(
-        'goog:loggingPrefs', {'performance': 'ALL'})
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-
     try:
-        driver.get(sample_video)
-        driver.implicitly_wait(5)
+        from webdriver_manager.chrome import ChromeDriverManager
+        from selenium.webdriver.chrome.service import Service
         
-        # Wait for the video to load and try to click play or just wait for the player to be ready
+        chrome_options = Options()
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument('--incognito')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
+        chrome_options.set_capability(
+            'goog:loggingPrefs', {'performance': 'ALL'})
+
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+
         try:
-            play_btn = driver.find_element(By.CSS_SELECTOR, ".ytp-play-button")
-            play_btn.click()
-        except:
-            pass
-        
-        time.sleep(3)
-
-        # get network log
-        perf = driver.get_log('performance')
-
-        # filter log
-        visitorId = None
-        poToken = None
-        for entry in perf:
+            driver.get(sample_video)
+            driver.implicitly_wait(5)
+            
+            # Wait for the video to load and try to click play or just wait for the player to be ready
             try:
-                log_message = json.loads(entry['message'])
-
-                postData = log_message.get("message", {}).get(
-                    "params", {}).get("request", {}).get("postData", {})
-
-                if not postData or "poToken" not in postData:
-                    continue
-
-                postData = json.loads(postData)
-
-                visitorId = postData['context']['client']['visitorData']
-                poToken = postData['serviceIntegrityDimensions']['poToken']
-                break
+                play_btn = driver.find_element(By.CSS_SELECTOR, ".ytp-play-button")
+                play_btn.click()
             except:
-                continue
-    finally:
-        driver.quit()
+                pass
+            
+            time.sleep(3)
 
-    if visitorId and poToken:
-        # write as json
-        with open("token.json", 'w', encoding='utf-8') as f:
-            json.dump({"visitorData": visitorId, "po_token": poToken},
-                      f, ensure_ascii=False, indent=4)
-        return visitorId, poToken
-    else:
+            # get network log
+            perf = driver.get_log('performance')
+
+            # filter log
+            visitorId = None
+            poToken = None
+            for entry in perf:
+                try:
+                    log_message = json.loads(entry['message'])
+
+                    postData = log_message.get("message", {}).get(
+                        "params", {}).get("request", {}).get("postData", {})
+
+                    if not postData or "poToken" not in postData:
+                        continue
+
+                    postData = json.loads(postData)
+
+                    visitorId = postData['context']['client']['visitorData']
+                    poToken = postData['serviceIntegrityDimensions']['poToken']
+                    break
+                except:
+                    continue
+        finally:
+            driver.quit()
+
+        if visitorId and poToken:
+            # write as json
+            with open("token.json", 'w', encoding='utf-8') as f:
+                json.dump({"visitorData": visitorId, "po_token": poToken},
+                          f, ensure_ascii=False, indent=4)
+            return visitorId, poToken
+        else:
+            return None, None
+    except Exception as e:
+        print(f"PO Token generation error: {e}")
         return None, None
 
 # دالة قراءة التوكن من الملف
@@ -813,7 +820,7 @@ def admin_panel(msg):
             if visitor_data and po_token:
                 bot.send_message(msg.chat.id, f"✅ تم توليد PO Token جديد بنجاح!\n\n🔑 Visitor Data: `{visitor_data}`\n🔑 PO Token: `{po_token}`\n\nانسخ هذه القيم وحدث المتغيرات البيئية أو الكود يدوياً ليتم استخدامها في التحميلات.", parse_mode="Markdown")
             else:
-                bot.reply_to(msg, "❌ فشل في توليد PO Token. تأكد من تثبيت Chrome driver.")
+                bot.reply_to(msg, "❌ فشل في توليد PO Token. يرجى المحاولة مرة أخرى أو تحقق من اتصال الإنترنت.")
         except Exception as e:
             bot.reply_to(msg, f"❌ خطأ: {str(e)}")
 
