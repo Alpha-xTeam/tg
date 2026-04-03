@@ -1057,7 +1057,8 @@ def handle_youtube_url(msg):
     chat_id = msg.chat.id
     
     # زيادة إحصائيات يوتيوب
-    increment_stat("youtube_count")
+    # Note: we increment it later when download is confirmed
+    # increment_stat("youtube_count")
     
     # حفظ الرابط مؤقتاً للمستخدم
     user_data[chat_id] = url
@@ -1319,6 +1320,9 @@ def callback_download(call):
             safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', file_name_only)
             delete_from_supabase(safe_file_name)
             
+            # زيادة إحصائيات يوتيوب عند نجاح الإرسال
+            increment_stat("youtube_count")
+            
             if os.path.exists(file_path): os.remove(file_path)
             
         except Exception as e:
@@ -1351,6 +1355,9 @@ def callback_download(call):
                 file_name_only = os.path.basename(file_path)
                 safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', file_name_only)
                 delete_from_supabase(safe_file_name)
+                
+                # زيادة إحصائيات يوتيوب عند نجاح الإرسال (للصوت)
+                increment_stat("youtube_count")
                 
                 os.remove(file_path)
             else:
