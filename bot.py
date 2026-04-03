@@ -59,7 +59,8 @@ def regenerate_network_token():
     chrome_options.set_capability(
         'goog:loggingPrefs', {'performance': 'ALL'})
 
-    driver = webdriver.Chrome(options=chrome_options)
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
         driver.get(sample_video)
@@ -189,6 +190,8 @@ L = instaloader.Instaloader(
 # استيراد selenium لتوليد PO Token
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 import json

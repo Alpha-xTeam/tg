@@ -9,3 +9,4 @@ storage3
 cloudscraper
 python-dotenv
 selenium
+webdriver-manager
