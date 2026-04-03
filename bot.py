@@ -38,6 +38,11 @@ OUTPUT = "/tmp/downloads"
 # جلب ملف الكوكيز من رابط خارجي وتخزينه
 COOKIES_FILE = "cookies.txt"
 def update_cookies_from_url():
+    # تم تعطيل التحديث التلقائي لاستخدام الكوكيز التي أرسلتها يدوياً
+    if os.path.exists(COOKIES_FILE):
+        print(f"✅ Using manual cookies from {os.path.abspath(COOKIES_FILE)}")
+        return True
+    
     url = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies.txt"
     try:
         import requests
