@@ -515,7 +515,10 @@ def get_yt_info_via_api(url):
 def get_yt_formats(url):
     # محاولة جلب المعلومات عبر Apify (أكثر استقراراً من المحاولات المحلية)
     try:
-        run_input = { "videos": [{ "url": url }] }
+        run_input = { 
+            "videos": [{ "url": url }],
+            "onlyCollectVideoInfo": True  # هذا الخيار مهم جداً لإخبار الأداة بجلب المعلومات فقط دون الرفع لمكان آخر
+        }
         # استخدام Actor خفيف لجلب المعلومات بسرعة
         run = apify_client.actor("UUhJDfKJT2SsXdclR").call(run_input=run_input, timeout_secs=60)
         
@@ -602,6 +605,7 @@ def download_vd(url, format_id=None):
             "videos": [{ "url": url }],
             "preferredQuality": quality,
             "preferredFormat": "mp4",
+            "onlyCollectVideoInfo": True # تأكيد الحصول على رابط التحميل المباشر فقط
         }
         
         # تشغيل الـ Actor (UUhJDfKJT2SsXdclR)
