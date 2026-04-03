@@ -239,9 +239,9 @@ os.makedirs(OUTPUT, exist_ok=True)
 PROXY = os.environ.get("PROXY_URL")
 
 # إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
-# يمكن ضبطها عبر المتغيرات البيئية: YOUTUBE_PO_TOKEN و YOUTUBE_VISITOR_DATA
-YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN")
-YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA")
+# استخدم أداة youtube-po-token-generator للحصول على هذه القيم
+YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "Mnh2rX_7fhZWq3aRVJo3KvnAfjdNqJMKfqOMvbicacVt-unCK9yqsIVuSsMxdEKRE6N9MzV21D_qu4mijjE-upKm2KnqESEOzTybDC5ZPCF47CDRFgsBJ-4TSJcpNblhy_u5U7KdowIXAzWrdyesvU_mzPGE4fHnW8Y="
+YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
 
 # التحقق من صلاحية ملف الكوكيز
 def validate_and_fix_cookies(cookie_file):
@@ -275,7 +275,7 @@ user_data = {}
 
 
 def _build_ydl_opts(format_id=None, extra_clients=None):
-    clients = extra_clients or ['ios', 'android_vr', 'web_creator', 'tv']
+    clients = extra_clients or ['ios', 'web_creator', 'tv']
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -284,16 +284,18 @@ def _build_ydl_opts(format_id=None, extra_clients=None):
             'player_client': clients,
             'player_skip': ['webpage', 'configs', 'js', 'sig'],
         }},
-        'user_agent': 'com.google.ios.youtube/19.42.1 (iPhone15,2; U; CPU iOS 17_4 like Mac OS X; en_US)',
-        'source_address': '0.0.0.0',
-        'http_headers': {
-            'X-Youtube-Client-Name': '5',
-            'X-Youtube-Client-Version': '19.42.1'
-        }
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     }
+    
     if YOUTUBE_PO_TOKEN and YOUTUBE_VISITOR_DATA:
-        ydl_opts['extractor_args']['youtube']['po_token'] = [YOUTUBE_PO_TOKEN]
+        # التأكد من إضافة بادئة web+ إذا كان التوكن مستخرجاً للمتصفح
+        token_value = YOUTUBE_PO_TOKEN
+        if not any(token_value.startswith(p) for p in ['web+', 'ios+', 'android+']):
+            token_value = f"web+{token_value}"
+            
+        ydl_opts['extractor_args']['youtube']['po_token'] = [token_value]
         ydl_opts['extractor_args']['youtube']['visitor_data'] = [YOUTUBE_VISITOR_DATA]
+    
     if format_id:
         ydl_opts['format'] = format_id
     if PROXY:
