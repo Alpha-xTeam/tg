@@ -2,3 +2,9 @@
 /downloads
 /update_cookies.py
 /users.json
+/token.json
+/cookies.txt
+/config.json
+__pycache__/
+*.pyc
+/tmp/
