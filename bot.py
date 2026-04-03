@@ -609,17 +609,18 @@ def download_vd(url, format_id=None):
     itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
     
     try:
-        v_data, p_token = po_token_verifier()
+        # استخدام OAuth كحل أخير (سيتطلب من المستخدم إدخال كود لمرة واحدة في Terminal السيرفر)
+        # أو يتم تخطي الحظر بالكامل بواسطة Apify/yt-dlp أعلاه
         for client_name in ['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']:
             try:
                 time.sleep(1)
+                # تفعيل use_oauth=True و allow_oauth_cache=True للطريقة الجديدة
+                # إزالة use_po_token لأنه أصبح قديماً ويسبب مشاكل مع التحديث الجديد
                 yt = PyTuneYT(
                     url,
                     client=client_name,
                     use_oauth=True,
-                    allow_oauth_cache=True,
-                    use_po_token=True,
-                    po_token_verifier=lambda: (v_data, p_token)
+                    allow_oauth_cache=True
                 )
                 
                 stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
