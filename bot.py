@@ -453,6 +453,7 @@ def get_yt_formats(url):
     for client_name in ['WEB', 'ANDROID_VR', 'TV', 'IOS']:
         try:
             time.sleep(1)  # Delay between attempts
+            # باستخدام nodejs-wheel-binaries، ستحاول pytubefix توليد PO Token تلقائياً عند استخدام عملاء معينين مثل WEB
             yt = PyTuneYT(
                 url,
                 client=client_name,
