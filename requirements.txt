@@ -7,3 +7,4 @@ postgrest
 storage3
 cloudscraper
 python-dotenv
+tiktok-dlpy

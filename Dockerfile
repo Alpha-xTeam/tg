@@ -14,6 +14,9 @@ COPY requirements.txt .
 # Install dependencies and yt-dlp
 RUN pip install --no-cache-dir -r requirements.txt yt-dlp
 
+# Install Playwright browsers
+RUN python -m playwright install --with-deps
+
 # Copy the rest of the application code
 COPY . .
 

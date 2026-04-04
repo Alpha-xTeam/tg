@@ -558,10 +558,220 @@ def download_mp3(url):
 # دالة تحميل صور تيك توك (yt-dlp لا يدعم روابط /photo/)
 def download_tiktok_photos(url):
     try:
+        # Try TikTokDL library first (handles slideshows and photos)
+        try:
+            import asyncio
+            from tiktokdl.download_post import get_post
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            post = loop.run_until_complete(get_post(url, download_path=OUTPUT, browser="firefox", headless=True))
+            loop.close()
+
+            if hasattr(post, 'images') and post.images:
+                # Slideshow
+                files = []
+                for img_path in post.images:
+                    if os.path.exists(img_path):
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(img_path))
+                        upload_to_supabase(img_path, safe_file_name)
+                        files.append({'path': img_path, 'type': 'photo'})
+                if files:
+                    return files, post.post_description or 'TikTok Slideshow'
+
+            elif hasattr(post, 'file_path') and post.file_path and os.path.exists(post.file_path):
+                # Single video or photo
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(post.file_path))
+                upload_to_supabase(post.file_path, safe_file_name)
+                file_type = 'video' if post.file_path.endswith('.mp4') else 'photo'
+                return [{'path': post.file_path, 'type': file_type}], post.post_description or 'TikTok Post'
+
+        except ImportError:
+            print("[DEBUG] TikTokDL not installed, falling back to scraping")
+        except Exception as e:
+            print(f"[DEBUG] TikTokDL failed: {e}, falling back to scraping")
+
+        # Fallback to original scraping method
         # استخراج معرف الفيديو من الرابط
         match = re.search(r'/photo/(\d+)', url)
         if not match:
             return [], None
+
+        video_id = match.group(1)
+        safe_title = f"tiktok_photo_{video_id}"
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.tiktok.com/',
+            'sec-ch-ua': '"Not A(Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+        }
+
+        # استخدام صفحة الـ Embed للحصول على بيانات الصور
+        embed_url = f'https://www.tiktok.com/embed/v2/{video_id}'
+        response = requests.get(embed_url, headers=headers, timeout=30, allow_redirects=True)
+
+        # إذا فشل الـ embed أو المحتوى قليل، حاول الرابط الأصلي
+        if response.status_code != 200 or len(response.text) < 10000:
+            print(f"Embed page returned {response.status_code}, trying original URL...")
+            response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+
+        html_content = response.text
+        print(f"[DEBUG] Embed page length: {len(html_content)}")
+
+        # استخراج روابط الصور من الصفحة
+        import json
+        image_urls = []
+
+        # الطريقة 1: البحث عن روابط photomode-image في HTML
+        raw_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com[^\s"<>\\]+)', html_content)
+        print(f"[DEBUG] Raw tiktokcdn URLs found: {len(raw_urls)}")
+
+        # فلترة: نريد فقط صور الـ photomode (وليس الصور المصغرة أو الأفاتار)
+        seen = set()
+        for raw_url in raw_urls:
+            # تنظيف الروابط من HTML entities
+            clean_url = raw_url.replace('&amp;', '&').replace('\u0026', '&')
+
+            # فقط صور الـ photomode
+            if 'photomode-image' not in clean_url:
+                continue
+
+            # إزالة التكرار باستخدام الجزء الأساسي من الرابط (بدون معاملات CDN)
+            id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
+            if id_match:
+                img_id = id_match.group(1)
+                if img_id in seen:
+                    continue
+                seen.add(img_id)
+                image_urls.append(clean_url)
+
+        print(f"[DEBUG] After photomode filtering: {len(image_urls)} images")
+
+        # الطريقة 2: إذا لم نجد صور، حاول استخراج من __UNIVERSAL_DATA
+        if not image_urls:
+            uni_match = html_content.find('__UNIVERSAL_DATA_FOR_REHYDRATION__')
+            if uni_match >= 0:
+                tag_start = html_content.find('>', uni_match)
+                tag_end = html_content.find('</script>', tag_start)
+                if tag_start >= 0 and tag_end >= 0:
+                    try:
+                        data = json.loads(html_content[tag_start+1:tag_end])
+                        # البحث عن image URLs في البيانات
+                        def find_image_urls(obj, found=None, depth=0):
+                            if found is None:
+                                found = []
+                            if depth > 15:
+                                return found
+                            if isinstance(obj, dict):
+                                for key, value in obj.items():
+                                    if key == 'imageURL' and isinstance(value, dict):
+                                        url_list = value.get('urlList', [])
+                                        if url_list:
+                                            found.append(url_list[0])
+                                    elif key == 'imageList' and isinstance(value, list):
+                                        for item in value:
+                                            if isinstance(item, dict):
+                                                url_list = item.get('imageURL', {}).get('urlList', [])
+                                                if url_list:
+                                                    found.append(url_list[0])
+                                    else:
+                                        find_image_urls(value, found, depth+1)
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    find_image_urls(item, found, depth+1)
+                            return found
+
+                        image_urls = find_image_urls(data)
+                        print(f"Found {len(image_urls)} images from UNIVERSAL_DATA")
+                    except:
+                        pass
+
+        # الطريقة 3: البحث عن أي روابط صور من tiktokcdn (بدون فلتر photomode)
+        if not image_urls:
+            all_cdn_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com/[^\s"<>\\]+)', html_content)
+            # فلترة الصور الكبيرة فقط (تجنب الصور المصغرة)
+            for raw_url in all_cdn_urls:
+                clean_url = raw_url.replace('&amp;', '&').replace('\u0026', '&')
+                # تجنب صور الأفاتار والصور المصغرة
+                if any(x in clean_url.lower() for x in ['avatar', 'cropcenter', 'thumbnail', 'favicon']):
+                    continue
+                # استخراج المعرف الفريد
+                id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
+                if id_match:
+                    img_id = id_match.group(1)
+                    if img_id not in seen:
+                        seen.add(img_id)
+                        image_urls.append(clean_url)
+            print(f"[DEBUG] After method 3 (broad CDN scan): {len(image_urls)} images")
+
+        # الطريقة 4: استخدام cloudscraper كحل أخير
+        if not image_urls:
+            try:
+                import cloudscraper
+                scraper = cloudscraper.create_scraper()
+                scrape_response = scraper.get(embed_url, timeout=30)
+                if scrape_response.status_code == 200:
+                    print(f"[DEBUG] cloudscraper page length: {len(scrape_response.text)}")
+                    cloud_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com/[^\s"<>\\]+)', scrape_response.text)
+                    for raw_url in cloud_urls:
+                        clean_url = raw_url.replace('&amp;', '&').replace('\u0026', '&')
+                        if 'photomode-image' in clean_url or 'photomode' in clean_url:
+                            id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
+                            if id_match:
+                                img_id = id_match.group(1)
+                                if img_id not in seen:
+                                    seen.add(img_id)
+                                    image_urls.append(clean_url)
+                    print(f"[DEBUG] After cloudscraper: {len(image_urls)} images")
+            except Exception as e:
+                print(f"[DEBUG] cloudscraper failed: {e}")
+
+        if not image_urls:
+            print(f"TikTok Photo: No images found. Page length: {len(html_content)}, embed status: {response.status_code}")
+            # Save HTML for debugging
+            try:
+                with open("/tmp/tiktok_debug.html", "w", encoding="utf-8") as f:
+                    f.write(html_content[:5000])
+                print("[DEBUG] Saved page snippet to /tmp/tiktok_debug.html")
+            except:
+                pass
+            return [], None
+
+        print(f"✅ Found {len(image_urls)} TikTok photos")
+
+        # تحميل الصور
+        files = []
+        for idx, img_url in enumerate(image_urls[:20], 1):
+            try:
+                img_response = requests.get(img_url, headers=headers, timeout=30)
+                if img_response.status_code == 200:
+                    file_path = os.path.join(OUTPUT, f"{safe_title}_{idx}.jpg")
+                    with open(file_path, 'wb') as f:
+                        f.write(img_response.content)
+
+                    if os.path.exists(file_path):
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        files.append({
+                            'path': file_path,
+                            'type': 'photo'
+                        })
+                        print(f"✅ Downloaded TikTok photo {idx}/{len(image_urls)}")
+            except Exception as e:
+                print(f"Failed to download TikTok photo {idx}: {e}")
+                continue
+
+        if not files:
+            return [], None
+
+        return files, safe_title
+
+    except Exception as e:
+        print(f"TikTok Photo Download Error: {e}")
+        return [], None
 
         video_id = match.group(1)
         safe_title = f"tiktok_photo_{video_id}"
