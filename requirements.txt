@@ -9,3 +9,4 @@ cloudscraper
 python-dotenv
 tiktok-dlpy
 gallery-dl
+pytubefix

@@ -39,6 +39,12 @@ except ImportError:
 import yt_dlp
 import requests
 
+# استيراد pytubefix كبديل للتنزيل من يوتيوب
+try:
+    from pytubefix import YouTube
+except ImportError:
+    YouTube = None
+
 # إعدادات yt-dlp المتقدمة (مستوحاة من youtube-downloader-api)
 YTDL_COMMON_PARAMS = {
     'quiet': True,
@@ -414,6 +420,19 @@ def get_yt_formats(url):
     except Exception as e:
         print(f"yt-dlp info fetch failed: {e}")
 
+    # محاولة باستخدام pytubefix كبديل
+    if YouTube:
+        try:
+            yt = YouTube(url)
+            return {
+                'title': yt.title,
+                'thumbnail': yt.thumbnail_url,
+                'formats': [{'format_id': 'pytube', 'resolution': 'High Quality', 'ext': 'mp4', 'filesize': 0}],
+                'method': 'pytube'
+            }
+        except Exception as e:
+            print(f"pytubefix info fetch failed: {e}")
+
     # Fallback: Google API
     api_info = get_yt_info_via_api(url)
     if api_info:
@@ -475,6 +494,21 @@ def download_vd(url, format_id=None):
 
     except Exception as e:
         print(f"download_vd Error: {e}")
+
+    # محاولة باستخدام pytubefix كبديل
+    if YouTube:
+        try:
+            yt = YouTube(url)
+            stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
+            if not stream:
+                return None, None
+            file_path = stream.download(output_path=OUTPUT)
+            if os.path.exists(file_path):
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                upload_to_supabase(file_path, safe_file_name)
+                return file_path, yt.title
+        except Exception as e:
+            print(f"pytubefix download_vd Error: {e}")
 
     return None, None
 
