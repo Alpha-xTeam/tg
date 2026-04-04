@@ -1142,6 +1142,19 @@ def handle_social_url(msg):
 
     print(f"[DEBUG] handle_social_url called with url: {url}")
 
+    # حل الروابط المختصرة (مثل vt.tiktok.com) للحصول على الرابط الحقيقي
+    if "vt.tiktok.com" in url or "vm.tiktok.com" in url:
+        try:
+            print(f"[DEBUG] Resolving TikTok short link...")
+            # استخدام GET مع stream=True للحصول على الروابط بدون تحميل الصفحة كاملة
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10, allow_redirects=True, stream=True)
+            r.close()  # إغلاق الاتصال فوراً بعد الحصول على الهيدرات
+            resolved_url = r.url
+            print(f"[DEBUG] Resolved to: {resolved_url}")
+            url = resolved_url
+        except Exception as e:
+            print(f"[DEBUG] Failed to resolve short link: {e}")
+
     if "instagram.com" in url:
         platform = "انستقرام"
         increment_stat("insta_count")
