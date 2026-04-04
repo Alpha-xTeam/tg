@@ -580,12 +580,13 @@ def download_tiktok_photos(url):
         embed_url = f'https://www.tiktok.com/embed/v2/{video_id}'
         response = requests.get(embed_url, headers=headers, timeout=30, allow_redirects=True)
 
-        # إذا فشل الـ embed، حاول الرابط الأصلي
+        # إذا فشل الـ embed أو المحتوى قليل، حاول الرابط الأصلي
         if response.status_code != 200 or len(response.text) < 10000:
             print(f"Embed page returned {response.status_code}, trying original URL...")
             response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
 
         html_content = response.text
+        print(f"[DEBUG] Embed page length: {len(html_content)}")
 
         # استخراج روابط الصور من الصفحة
         import json
@@ -593,6 +594,7 @@ def download_tiktok_photos(url):
 
         # الطريقة 1: البحث عن روابط photomode-image في HTML
         raw_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com[^\s"<>\\]+)', html_content)
+        print(f"[DEBUG] Raw tiktokcdn URLs found: {len(raw_urls)}")
 
         # فلترة: نريد فقط صور الـ photomode (وليس الصور المصغرة أو الأفاتار)
         seen = set()
@@ -612,6 +614,8 @@ def download_tiktok_photos(url):
                     continue
                 seen.add(img_id)
                 image_urls.append(clean_url)
+
+        print(f"[DEBUG] After photomode filtering: {len(image_urls)} images")
 
         # الطريقة 2: إذا لم نجد صور، حاول استخراج من __UNIVERSAL_DATA
         if not image_urls:
@@ -652,7 +656,7 @@ def download_tiktok_photos(url):
                     except:
                         pass
 
-        # الطريقة 3: البحث عن أي روابط صور من tiktokcdn
+        # الطريقة 3: البحث عن أي روابط صور من tiktokcdn (بدون فلتر photomode)
         if not image_urls:
             all_cdn_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com/[^\s"<>\\]+)', html_content)
             # فلترة الصور الكبيرة فقط (تجنب الصور المصغرة)
@@ -668,9 +672,39 @@ def download_tiktok_photos(url):
                     if img_id not in seen:
                         seen.add(img_id)
                         image_urls.append(clean_url)
+            print(f"[DEBUG] After method 3 (broad CDN scan): {len(image_urls)} images")
+
+        # الطريقة 4: استخدام cloudscraper كحل أخير
+        if not image_urls:
+            try:
+                import cloudscraper
+                scraper = cloudscraper.create_scraper()
+                scrape_response = scraper.get(embed_url, timeout=30)
+                if scrape_response.status_code == 200:
+                    print(f"[DEBUG] cloudscraper page length: {len(scrape_response.text)}")
+                    cloud_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com/[^\s"<>\\]+)', scrape_response.text)
+                    for raw_url in cloud_urls:
+                        clean_url = raw_url.replace('&amp;', '&').replace('\u0026', '&')
+                        if 'photomode-image' in clean_url or 'photomode' in clean_url:
+                            id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
+                            if id_match:
+                                img_id = id_match.group(1)
+                                if img_id not in seen:
+                                    seen.add(img_id)
+                                    image_urls.append(clean_url)
+                    print(f"[DEBUG] After cloudscraper: {len(image_urls)} images")
+            except Exception as e:
+                print(f"[DEBUG] cloudscraper failed: {e}")
 
         if not image_urls:
             print(f"TikTok Photo: No images found. Page length: {len(html_content)}, embed status: {response.status_code}")
+            # Save HTML for debugging
+            try:
+                with open("/tmp/tiktok_debug.html", "w", encoding="utf-8") as f:
+                    f.write(html_content[:5000])
+                print("[DEBUG] Saved page snippet to /tmp/tiktok_debug.html")
+            except:
+                pass
             return [], None
 
         print(f"✅ Found {len(image_urls)} TikTok photos")
