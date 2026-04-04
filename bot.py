@@ -1032,7 +1032,7 @@ def download_tiktok_photos(url):
         return [], None
 
 # دالة تحميل فيديو أو صور من تيك توك أو انستقرام
-def download_social(url, platform="social"):
+def download_social(url, platform="social", quality="high"):
     # معالجة خاصة لصور تيك توك أولاً (yt-dlp لا يدعم روابط /photo/)
     if "tiktok.com" in url and "/photo/" in url:
         print(f"TikTok photo URL detected: {url}")
@@ -1100,7 +1100,7 @@ def download_social(url, platform="social"):
         # الطريقة الأولى: yt-dlp مع دعم كامل للـ Carousel
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
-            'format': 'best[ext=mp4]/best[ext=jpg]/best[ext=png]/best',
+            'format': 'bv[height<=480]+ba/b' if quality == 'medium' else 'best[ext=mp4]/best[ext=jpg]/best[ext=png]/best',
             'quiet': True,
             'no_warnings': True,
             'skip_unavailable_fragments': True,
@@ -1522,7 +1522,7 @@ def handle_social_url(msg):
                 bot.edit_message_text(f"❌ فشل تحميل الصوت من {platform}.", chat_id, status_msg.message_id)
                 return
 
-        files, safe_title = download_social(url, platform)
+        files, safe_title = download_social(url, platform, quality='medium')
 
         if not files:
             error_text = f"❌ فشل تحميل محتوى {platform}.\n"
@@ -1579,14 +1579,23 @@ def handle_social_url(msg):
         # إرسال الفيديوهات
         if videos:
             for video in videos:
+                markup = None
+                if platform in ["انستقرام", "تيك توك"]:
+                    markup = telebot.types.InlineKeyboardMarkup()
+                    markup.add(telebot.types.InlineKeyboardButton("🔥 تنزيل بدقة عالية", callback_data="high_quality"))
+                    # Store the URL for high quality download
+                    if chat_id not in user_data:
+                        user_data[chat_id] = {}
+                    user_data[chat_id]['pending_high_quality'] = url
+
                 with open(video['path'], "rb") as f:
-                    bot.send_video(chat_id, f, caption=f"✅ فيديو من {platform}: {safe_title}", timeout=300)
-                
+                    bot.send_video(chat_id, f, caption=f"✅ فيديو من {platform}: {safe_title}", reply_markup=markup, timeout=300)
+
                 # حذف من الستورج بعد الإرسال
                 file_name_only = os.path.basename(video['path'])
                 safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', file_name_only)
                 delete_from_supabase(safe_file_name)
-                
+
                 os.remove(video['path'])
 
         bot.delete_message(chat_id, status_msg.message_id)
@@ -1608,10 +1617,33 @@ def handle_social_url(msg):
 
 
 # التعامل مع ضغطات الأزرار (Callback Query)
-@bot.callback_query_handler(func=lambda call: call.data.startswith('yt_') or call.data.startswith('dl_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('yt_') or call.data.startswith('dl_') or call.data == 'high_quality')
 def callback_download(call):
     chat_id = call.message.chat.id
-    
+
+    if call.data == 'high_quality':
+        url = user_data.get(call.from_user.id, {}).get('pending_high_quality')
+        if url:
+            platform = "انستقرام" if "instagram.com" in url else "تيك توك" if "tiktok.com" in url else "منصة"
+            status_msg = bot.send_message(chat_id, "⏳ جاري تحميل النسخة عالية الدقة...")
+            files, safe_title = download_social(url, platform, quality='high')
+            if files:
+                videos = [f for f in files if f['type'] == 'video']
+                if videos:
+                    for video in videos:
+                        with open(video['path'], "rb") as f:
+                            bot.send_video(chat_id, f, caption=f"✅ فيديو عالي الدقة من {platform}: {safe_title}", timeout=300)
+                        file_name_only = os.path.basename(video['path'])
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', file_name_only)
+                        delete_from_supabase(safe_file_name)
+                        os.remove(video['path'])
+                bot.delete_message(chat_id, status_msg.message_id)
+            else:
+                bot.edit_message_text("❌ فشل تحميل النسخة عالية الدقة.", chat_id, status_msg.message_id)
+            if call.from_user.id in user_data and 'pending_high_quality' in user_data[call.from_user.id]:
+                del user_data[call.from_user.id]['pending_high_quality']
+        return
+
     # التعامل مع طلبات التحميل من نتائج البحث
     if call.data.startswith("dl_search_"):
         video_id = call.data.replace("dl_search_", "")
