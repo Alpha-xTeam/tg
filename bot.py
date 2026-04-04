@@ -697,6 +697,64 @@ def download_tiktok_photos(url):
                 print(f"[DEBUG] cloudscraper failed: {e}")
 
         if not image_urls:
+            # Try yt-dlp as fallback for albums
+            try:
+                print("[DEBUG] Trying yt-dlp fallback for TikTok album")
+                ydl_opts = {
+                    'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+                    'format': 'best',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'skip_unavailable_fragments': True,
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                    }
+                }
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+
+                    files = []
+
+                    # Handle multiple entries (albums)
+                    if 'entries' in info and info['entries']:
+                        for entry in info['entries']:
+                            if not entry: continue
+                            file_path = ydl.prepare_filename(entry)
+                            if os.path.exists(file_path):
+                                ext = os.path.splitext(file_path)[1].lower()
+                                file_type = 'video' if ext == '.mp4' else 'photo'
+                                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                                upload_to_supabase(file_path, safe_file_name)
+                                files.append({'path': file_path, 'type': file_type})
+
+                    # Single file
+                    else:
+                        file_path = ydl.prepare_filename(info)
+                        # Check for actual file
+                        if not os.path.exists(file_path):
+                            base_path = os.path.splitext(file_path)[0]
+                            for ext in ['jpg', 'jpeg', 'png', 'webp', 'mp4']:
+                                temp_path = f'{base_path}.{ext}'
+                                if os.path.exists(temp_path):
+                                    file_path = temp_path
+                                    break
+
+                        if os.path.exists(file_path):
+                            ext = os.path.splitext(file_path)[1].lower()
+                            file_type = 'video' if ext == '.mp4' else 'photo'
+                            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                            upload_to_supabase(file_path, safe_file_name)
+                            files.append({'path': file_path, 'type': file_type})
+
+                    if files:
+                        safe_title = re.sub(r'[\\/*?:"<>|]', "_", info.get('title', 'TikTok'))
+                        print(f"[DEBUG] yt-dlp fallback succeeded: {len(files)} files")
+                        return files, safe_title
+
+            except Exception as e:
+                print(f"[DEBUG] yt-dlp fallback failed: {e}")
+
             print(f"TikTok Photo: No images found. Page length: {len(html_content)}, embed status: {response.status_code}")
             # Save HTML for debugging
             try:
