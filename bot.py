@@ -586,9 +586,37 @@ def download_tiktok_photos(url):
                 return [{'path': post.file_path, 'type': file_type}], post.post_description or 'TikTok Post'
 
         except ImportError:
-            print("[DEBUG] TikTokDL not installed, falling back to scraping")
+            print("[DEBUG] TikTokDL not installed, falling back to gallery-dl")
         except Exception as e:
-            print(f"[DEBUG] TikTokDL failed: {e}, falling back to scraping")
+            print(f"[DEBUG] TikTokDL failed: {e}, falling back to gallery-dl")
+
+        # Try gallery-dl as second fallback
+        try:
+            import subprocess
+            print("[DEBUG] Trying gallery-dl for TikTok album")
+            result = subprocess.run(['gallery-dl', '--dest', OUTPUT, url], capture_output=True, text=True, timeout=60)
+            if result.returncode == 0:
+                print(f"[DEBUG] gallery-dl output: {result.stdout}")
+                # Find downloaded files
+                files = []
+                # Gallery-dl typically downloads to OUTPUT/tiktok/username/post_id/
+                # Look for jpeg/png files in OUTPUT
+                for root, dirs, filenames in os.walk(OUTPUT):
+                    for filename in filenames:
+                        if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                            file_path = os.path.join(root, filename)
+                            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                            upload_to_supabase(file_path, safe_file_name)
+                            files.append({'path': file_path, 'type': 'photo'})
+                if files:
+                    return files, 'TikTok Album'
+            else:
+                print(f"[DEBUG] gallery-dl failed: {result.stderr}")
+
+        except ImportError:
+            print("[DEBUG] gallery-dl not installed, falling back to scraping")
+        except Exception as e:
+            print(f"[DEBUG] gallery-dl failed: {e}, falling back to scraping")
 
         # Fallback to original scraping method
         # استخراج معرف الفيديو من الرابط
