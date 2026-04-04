@@ -56,6 +56,7 @@ YTDL_COMMON_PARAMS = {
     'quiet': True,
     'no_warnings': True,
     'format': 'best',
+    'age_limit': 99,  # السماح بالمحتوى المقيد بالعمر
     'cookiefile': 'cookies.txt', # إضافة ملف الكوكيز لمحاكاة التصفح الحقيقي
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -74,7 +75,7 @@ default_visitor_data = "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
 if YOUTUBE_PO_TOKEN != default_po_token or YOUTUBE_VISITOR_DATA != default_visitor_data:
     YTDL_COMMON_PARAMS['extractor_args'] = {
         'youtube': {
-            'player_client': ['web', 'ios', 'android'],
+            'player_client': ['web', 'ios', 'android', 'tv'],
             'po_token': YOUTUBE_PO_TOKEN,
             'visitor_data': YOUTUBE_VISITOR_DATA
         }
@@ -471,7 +472,7 @@ def get_yt_formats(url):
     if YouTube:
         try:
             import time
-            time.sleep(2)  # انتظار لتجنب rate limiting
+            time.sleep(5)  # انتظار لتجنب rate limiting
             yt = YouTube(url, client='ANDROID')
             return {
                 'title': yt.title,
