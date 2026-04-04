@@ -30,11 +30,9 @@ except ImportError:
     def create_client(url, key):
         return Client(url, key)
 
-# استيراد مكتبة yt-dlp و pytube لتحميل الفيديوهات
+# استيراد مكتبة yt-dlp لتحميل الفيديوهات
 import yt_dlp
 import requests
-from pytubefix import YouTube as PyTuneYT
-from pytubefix.cli import on_progress
 
 # إعدادات yt-dlp المتقدمة (مستوحاة من youtube-downloader-api)
 YTDL_COMMON_PARAMS = {
@@ -51,97 +49,6 @@ YTDL_COMMON_PARAMS = {
         'Sec-Fetch-Mode': 'navigate',
     }
 }
-
-# دالة لتوفير PO Token لمكتبة pytubefix
-def po_token_verifier():
-    # محاولة تحميل من الملف أولاً
-    visitor_data, po_token = load_token_from_file()
-    if visitor_data and po_token:
-        return visitor_data, po_token
-    # إلا فاستخدم الافتراضي
-    return YOUTUBE_VISITOR_DATA, YOUTUBE_PO_TOKEN
-
-# دالة توليد PO Token جديد باستخدام Selenium
-def regenerate_network_token():
-    sample_video = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
-
-    try:
-        from webdriver_manager.chrome import ChromeDriverManager
-        from selenium.webdriver.chrome.service import Service
-        
-        chrome_options = Options()
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument('--incognito')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
-        chrome_options.set_capability(
-            'goog:loggingPrefs', {'performance': 'ALL'})
-
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-
-        try:
-            driver.get(sample_video)
-            driver.implicitly_wait(5)
-            
-            # Wait for the video to load and try to click play or just wait for the player to be ready
-            try:
-                play_btn = driver.find_element(By.CSS_SELECTOR, ".ytp-play-button")
-                play_btn.click()
-            except:
-                pass
-            
-            time.sleep(3)
-
-            # get network log
-            perf = driver.get_log('performance')
-
-            # filter log
-            visitorId = None
-            poToken = None
-            for entry in perf:
-                try:
-                    log_message = json.loads(entry['message'])
-
-                    postData = log_message.get("message", {}).get(
-                        "params", {}).get("request", {}).get("postData", {})
-
-                    if not postData or "poToken" not in postData:
-                        continue
-
-                    postData = json.loads(postData)
-
-                    visitorId = postData['context']['client']['visitorData']
-                    poToken = postData['serviceIntegrityDimensions']['poToken']
-                    break
-                except:
-                    continue
-        finally:
-            driver.quit()
-
-        if visitorId and poToken:
-            # write as json
-            with open("token.json", 'w', encoding='utf-8') as f:
-                json.dump({"visitorData": visitorId, "po_token": poToken},
-                          f, ensure_ascii=False, indent=4)
-            return visitorId, poToken
-        else:
-            return None, None
-    except Exception as e:
-        print(f"PO Token generation error: {e}")
-        return None, None
-
-# دالة قراءة التوكن من الملف
-def load_token_from_file():
-    try:
-        with open("token.json", 'r', encoding='utf-8') as f:
-            token_file = json.load(f)
-        return token_file['visitorData'], token_file['po_token']
-    except:
-        return None, None
 
 # مجلد حفظ الملفات المحملة
 # نستخدم /tmp لدعم الاستضافات التي تملك نظام ملفات للقراءة فقط
@@ -225,16 +132,6 @@ L = instaloader.Instaloader(
     compress_json=False
 )
 
-
-# استيراد selenium لتوليد PO Token
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.by import By
-import json
-
 # توكن البوت
 BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
@@ -253,11 +150,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 # مفتاح YouTube API v3
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
-# إعدادات Apify
-from apify_client import ApifyClient
-APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
+# إعدادات الأدمن
 ADMIN_ID = os.environ.get("ADMIN_ID")
-apify_client = ApifyClient(APIFY_TOKEN)
 
 if SUPABASE_URL and SUPABASE_KEY:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -439,49 +333,6 @@ user_data = {}
 # تتبع حالة الاشتراك (لتجنب تكرار إرسال رسالة للمطور)
 user_subscription_notified = set()
 
-
-def _build_ydl_opts(format_id=None, extra_clients=None):
-    # استخدام العميل web فقط عند وجود PO Token والعملاء الآخرين كاحتياط
-    # إضافة MWEB كعميل إضافي لتخفيف الضغط
-    clients = extra_clients or ['mweb', 'ios', 'tv', 'android']
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'extractor_args': {'youtube': {
-            'player_client': clients,
-            'player_skip': ['webpage', 'configs', 'js', 'sig'],
-        }},
-        # استخدام User-Agent متوافق مع نسخة كروم 121
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    }
-    
-    if YOUTUBE_PO_TOKEN and YOUTUBE_VISITOR_DATA:
-        token_value = YOUTUBE_PO_TOKEN
-        # التوكن المولد من الأداة مخصص لعميل الويب (web)
-        if not any(token_value.startswith(p) for p in ['web+', 'ios+', 'android+']):
-            token_value = f"web+{token_value}"
-            
-        ydl_opts['extractor_args']['youtube']['po_token'] = [token_value]
-        ydl_opts['extractor_args']['youtube']['visitor_data'] = [YOUTUBE_VISITOR_DATA]
-        
-        # عند استخدام PO Token يفضل عدم استخدام الكوكيز لعميل الويب لتجنب تعارض الحساب
-        ydl_opts['extractor_args']['youtube']['player_client'] = ['web']
-        # إذا كان عميل الويب هو الأساس، يفضل حذف الكوكيز لهذا العميل تحديداً
-        if 'cookiefile' in ydl_opts:
-            del ydl_opts['cookiefile']
-    
-    if format_id:
-        ydl_opts['format'] = format_id
-    if PROXY:
-        ydl_opts['proxy'] = PROXY
-    
-    # استخدام الكوكيز فقط إذا لم يتم استخدام PO Token (لأن الويب توكن حساس للكوكيز)
-    if not (YOUTUBE_PO_TOKEN and YOUTUBE_VISITOR_DATA) and os.path.exists(COOKIES_FILE):
-        ydl_opts['cookiefile'] = COOKIES_FILE
-        
-    return ydl_opts
-
 # دالة جلب معلومات اليوتيوب باستخدام Google API كخيار أول
 def get_yt_info_via_api(url):
     try:
@@ -514,32 +365,75 @@ def get_yt_info_via_api(url):
 
 # دالة جلب معلومات اليوتيوب والجودات المتاحة
 def get_yt_formats(url):
-    # محاولة جلب المعلومات عبر Apify (أكثر استقراراً من المحاولات المحلية)
+    # الطريقة الأولى: yt-dlp (الأكثر استقراراً وتحديثاً)
     try:
-        run_input = { 
-            "urls": [url],  # استخدام الاسم الصحيح للحقل URLs بدلاً من videos
-            "onlyCollectVideoInfo": True,
-            "uploader": "none" # تأكيد عدم الرغبة في الرفع لأي مكان
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'extract_flat': False,
+            'skip_download': True,
         }
-        # استخدام Actor خفيف لجلب المعلومات بسرعة
-        run = apify_client.actor("jupitrrr/youtube-video-downloader").call(run_input=run_input, timeout_secs=60)
-        
-        for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
-            if "title" in item:
-                # محاكاة الجودات الافتراضية بما أن Apify يدعم التحميل المباشر
-                return {
-                    'title': item.get('title', 'Video'),
-                    'thumbnail': item.get('thumbnail'),
-                    'formats': [
-                        {'format_id': '720p', 'resolution': '720p', 'ext': 'mp4', 'filesize': 0},
-                        {'format_id': '360p', 'resolution': '360p', 'ext': 'mp4', 'filesize': 0}
-                    ],
-                    'method': 'apify'
-                }
-    except Exception as e:
-        print(f"Apify info fetch failed: {e}")
 
-    # Fallback to get_yt_info_via_api (Google API)
+        # إضافة الكوكيز إن وجدت
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
+
+        # إضافة البروكسي إن وجد
+        if PROXY:
+            ydl_opts['proxy'] = PROXY
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                return None
+
+            formats = []
+            seen_resolutions = set()
+
+            # جلب الفيديوهات progressive (صوت + صورة)
+            for f in info.get('formats', []):
+                if not f.get('vcodec') or not f.get('acodec') or f.get('acodec') == 'none':
+                    continue
+
+                resolution = f.get('resolution') or f"{f.get('height', '?')}p"
+                ext = f.get('ext', 'mp4')
+                filesize = f.get('filesize', 0) or 0
+
+                # تجنب التكرار
+                res_key = f"{resolution}_{ext}"
+                if res_key in seen_resolutions:
+                    continue
+                seen_resolutions.add(res_key)
+
+                formats.append({
+                    'format_id': f"ydl_{f['format_id']}",
+                    'resolution': resolution,
+                    'ext': ext,
+                    'filesize': filesize,
+                    'actual_format_id': f['format_id']
+                })
+
+            # إذا لم توجد progressive، نستخدم best video + best audio merge
+            if not formats:
+                formats.append({
+                    'format_id': 'ydl_best',
+                    'resolution': 'Best Available',
+                    'ext': 'mp4',
+                    'filesize': 0,
+                    'actual_format_id': 'bv*+ba/b'
+                })
+
+            return {
+                'title': info.get('title', 'Video'),
+                'thumbnail': info.get('thumbnail'),
+                'formats': formats[:10],  # حد أقصى 10 جودات
+                'method': 'yt-dlp'
+            }
+    except Exception as e:
+        print(f"yt-dlp info fetch failed: {e}")
+
+    # Fallback: Google API
     api_info = get_yt_info_via_api(url)
     if api_info:
         return {
@@ -548,186 +442,116 @@ def get_yt_formats(url):
             'formats': [{'format_id': 'default', 'resolution': 'High Quality', 'ext': 'mp4', 'filesize': 0}],
             'method': 'api'
         }
-    return None
-    
-    # Fallback to pytubefix with delay between attempts
-    import time
-    for i, client_name in enumerate(['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']):
-        try:
-            # استخدام تأخير تصاعدي (Exponential Backoff) لتجنب الحظر
-            # التأخير = 2 أس رقم المحاولة (مثلاً 2، 4، 8 ثواني)
-            wait_time = 2 ** i
-            time.sleep(wait_time) 
-            # الحصول على بيانات التوكن
-            v_data, p_token = po_token_verifier()
-            yt = PyTuneYT(
-                url,
-                client=client_name,
-                use_oauth=False,
-                allow_oauth_cache=False,
-                use_po_token=True,
-                po_token_verifier=lambda: (v_data, p_token)
-            )
-            
-            streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
-            
-            if streams:
-                formats = []
-                for s in streams:
-                    formats.append({
-                        'format_id': f"py_{s.itag}",
-                        'ext': 'mp4',
-                        'resolution': f"{s.resolution} ({client_name})",
-                        'filesize': s.filesize
-                    })
-                
-                if formats:
-                    return {
-                        'title': yt.title,
-                        'thumbnail': yt.thumbnail_url,
-                        'formats': formats[:8],
-                        'method': 'pytubefix'
-                    }
-        except Exception as e:
-            print(f"pytubefix client {client_name} failed: {e}")
-            continue
-            
+
     return None
 
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة
 def download_vd(url, format_id=None):
-    # الطريقة البديلة والأكثر استقراراً: Apify السحابي
-    # هذا النظام يتخطى كل مشاكل الـ IP والحظر والـ Bot Detection
-    try:
-        quality = "720p"
-        if format_id and 'p' in str(format_id):
-            quality = format_id
-
-        run_input = {
-            "urls": [url],
-            "preferredQuality": quality,
-            "preferredFormat": "mp4",
-            "onlyCollectVideoInfo": True,
-            "uploader": "none"
-        }
-        
-        # تشغيل الـ Actor (jupitrrr/youtube-video-downloader)
-        run = apify_client.actor("jupitrrr/youtube-video-downloader").call(run_input=run_input, timeout_secs=300)
-        
-        # جلب النتائج من الـ dataset
-        for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
-            if "downloadUrl" in item or "url" in item:
-                final_link = item.get("downloadUrl") or item.get("url")
-                title = item.get("title", "Video")
-                
-                # تحميل الملف باستخدام requests ليكون سريعاً ومباشراً
-                response = requests.get(final_link, stream=True)
-                safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)
-                file_path = os.path.join(OUTPUT, f"{safe_title}.mp4")
-                
-                with open(file_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=1024*1024): # 1MB chunks
-                        f.write(chunk)
-                
-                if os.path.exists(file_path):
-                    safe_file_name = os.path.basename(file_path)
-                    upload_to_supabase(file_path, safe_file_name)
-                    return file_path, title
-    except Exception as e:
-        print(f"Apify Primary Method Failed: {e}")
-
-    # إذا فشل Apify (وهو نادر)، نعود لـ yt-dlp كاحتياط أخير
     try:
         ydl_opts = YTDL_COMMON_PARAMS.copy()
         ydl_opts.update({
             'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
-            'format': 'best[ext=mp4]/best',
+            'quiet': True,
+            'no_warnings': True,
         })
+
+        if PROXY:
+            ydl_opts['proxy'] = PROXY
+
+        # تحديد الجودة المطلوبة
+        if format_id:
+            if format_id.startswith('ydl_'):
+                # استخدام format_id الحقيقي من yt-dlp
+                actual_id = format_id.replace('ydl_', '')
+                if actual_id in ('bv*+ba/b', 'best'):
+                    ydl_opts['format'] = 'bv*+ba/b'
+                else:
+                    ydl_opts['format'] = actual_id
+            else:
+                # fallback: صيغة قديمة
+                ydl_opts['format'] = format_id
+        else:
+            ydl_opts['format'] = 'bv*+ba/b'
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            if info:
-                p = ydl.prepare_filename(info)
-                if os.path.exists(p):
-                    upload_to_supabase(p, os.path.basename(p))
-                    return p, info.get('title', 'Video')
-    except:
-        pass
-                
-    return None, None
-    
-    # Fallback to pytubefix
-    import time
-    itag = int(format_id.split("_")[1]) if format_id and format_id.startswith("py_") else None
-    
-    try:
-        # إيقاف استخدام OAuth تماماً لتجنب طلبات الأكواد في الـ Container
-        # والاعتماد بدلاً من ذلك على تبديل الـ Clients لتجاوز الحظر
-        for client_name in ['ANDROID_EMBED', 'ANDROID_VR', 'TV', 'WEB_EMBED', 'IOS']:
-            try:
-                time.sleep(1)
-                yt = PyTuneYT(
-                    url,
-                    client=client_name,
-                    use_oauth=False,
-                    allow_oauth_cache=False
-                )
-                
-                stream = yt.streams.get_by_itag(itag) if itag else yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
-                
-                if stream:
-                    safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
-                    file_path = stream.download(output_path=OUTPUT, filename=f"{safe_title}.mp4")
-                    
-                    if os.path.exists(file_path):
-                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                        upload_to_supabase(file_path, safe_file_name)
-                        return file_path, yt.title
-            except Exception as e:
-                print(f"pytubefix download client {client_name} failed: {e}")
-                continue
-                
-        return None, None
+            if not info:
+                return None, None
+
+            file_path = ydl.prepare_filename(info)
+            # التعامل مع الملفات التي قد تغير امتدادها
+            if not os.path.exists(file_path):
+                base, _ = os.path.splitext(file_path)
+                for ext in ['.mp4', '.mkv', '.webm', '.flv']:
+                    if os.path.exists(base + ext):
+                        file_path = base + ext
+                        break
+
+            if os.path.exists(file_path):
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                upload_to_supabase(file_path, safe_file_name)
+                return file_path, info.get('title', 'Video')
+
     except Exception as e:
-        print(f"Error in download_vd: {e}")
-        return None, None
+        print(f"download_vd Error: {e}")
+
+    return None, None
 
 # دالة تحميل الصوت فقط من يوتيوب
 def download_mp3(url):
     try:
-        # استخدام MWEB (Mobile Web) أو ANDROID_VR للصوت لضمان تجاوز 429
-        for client_name in ['MWEB', 'ANDROID_VR', 'IOS', 'TV']:
-            try:
-                yt = PyTuneYT(
-                    url,
-                    on_progress_callback=on_progress,
-                    client=client_name,
-                    use_oauth=False,
-                    allow_oauth_cache=True
-                )
-                
-                # الحصول على أفضل جودة صوت متاحة
-                audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
-                
-                if audio_stream:
-                    safe_title = re.sub(r'[\\/*?:"<>|]', "_", yt.title)
-                    # التحميل بصيغة mp4 صوتية أولاً ثم تغيير الاسم (لضمان عمل pytubefix)
-                    temp_file = audio_stream.download(output_path=OUTPUT, filename=f"{safe_title}_raw")
-                    file_path = os.path.join(OUTPUT, f"{safe_title}.mp3")
-                    
-                    # إعادة تسمية الملف ليكون mp3
-                    if os.path.exists(temp_file):
-                        if os.path.exists(file_path): os.remove(file_path)
-                        os.rename(temp_file, file_path)
-                        
-                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                        upload_to_supabase(file_path, safe_file_name)
-                        return file_path, yt.title
-            except Exception as e:
-                print(f"pytubefix audio download client {client_name} failed: {e}")
-                continue
-        return None, None
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'format': 'bestaudio/best',
+            'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+
+        if PROXY:
+            ydl_opts['proxy'] = PROXY
+
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if not info:
+                return None, None
+
+            # yt-dlp مع FFmpegExtractAudio يحول الملف إلى mp3
+            # اسم الملف قد يتغير بعد التحويل
+            safe_title = re.sub(r'[\\/*?:"<>|]', "_", info.get('title', 'Audio'))
+            expected_path = os.path.join(OUTPUT, f"{safe_title}.mp3")
+
+            # البحث عن الملف الفعلي (yt-dlp قد يستخدم اسم مختلف قليلاً)
+            if os.path.exists(expected_path):
+                file_path = expected_path
+            else:
+                # البحث عن أي ملف mp3 في المجلد
+                for f in os.listdir(OUTPUT):
+                    if f.endswith('.mp3') and safe_title.split('_')[0] in f:
+                        file_path = os.path.join(OUTPUT, f)
+                        break
+                else:
+                    # fallback: استخدام prepare_filename
+                    file_path = ydl.prepare_filename(info)
+                    base, _ = os.path.splitext(file_path)
+                    file_path = base + '.mp3'
+                    if not os.path.exists(file_path):
+                        return None, None
+
+            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+            upload_to_supabase(file_path, safe_file_name)
+            return file_path, info.get('title', 'Audio')
+
     except Exception as e:
-        print(f"Error in download_mp3: {e}")
+        print(f"download_mp3 Error: {e}")
         return None, None
 
 
@@ -961,7 +785,6 @@ def start(msg):
         admin_keyboard.add("📢 اشتراك إجباري", "🔧 إعدادات القناة")
         admin_keyboard.add("📝 جلب ملف users.json", "📂 جلب ملف config.json")
         admin_keyboard.add("🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم")
-        admin_keyboard.add("🔄 تحديث PO Token")
         welcome_text += "\n\n🛠️ *مرحباً أيها المطور، يمكنك التحكم بالبوت أدناه:* "
         
         # إرسال الرسالة مع زر القناة (Inline) وكيبورد الأدمن (Reply) في نفس الوقت
@@ -974,7 +797,7 @@ def start(msg):
 # لوحة تحكم الأدمن
 @bot.message_handler(func=lambda msg: msg.chat.id == ADMIN_ID and msg.text in [
     "📊 إحصائيات", "📢 إذاعة", "📢 اشتراك إجباري", "🔧 إعدادات القناة",
-    "📝 جلب ملف users.json", "📂 جلب ملف config.json", "🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم", "🔄 تحديث PO Token"
+    "📝 جلب ملف users.json", "📂 جلب ملف config.json", "🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم"
 ])
 def admin_panel(msg):
     config = get_config()
@@ -1029,17 +852,6 @@ def admin_panel(msg):
     elif msg.text == "🚫 حظر مستخدم":
         bot.reply_to(msg, "🆔 أرسل أيدي المستخدم الذي تريد حظره:")
         bot.register_next_step_handler(msg, block_user_step)
-
-    elif msg.text == "🔄 تحديث PO Token":
-        bot.reply_to(msg, "⏳ جاري توليد PO Token جديد، يرجى الانتظار...")
-        try:
-            visitor_data, po_token = regenerate_network_token()
-            if visitor_data and po_token:
-                bot.send_message(msg.chat.id, f"✅ تم توليد PO Token جديد بنجاح!\n\n🔑 Visitor Data: `{visitor_data}`\n🔑 PO Token: `{po_token}`\n\nانسخ هذه القيم وحدث المتغيرات البيئية أو الكود يدوياً ليتم استخدامها في التحميلات.", parse_mode="Markdown")
-            else:
-                bot.reply_to(msg, "❌ فشل في توليد PO Token. يرجى المحاولة مرة أخرى أو تحقق من اتصال الإنترنت.")
-        except Exception as e:
-            bot.reply_to(msg, f"❌ خطأ: {str(e)}")
 
 def block_user_step(msg):
     try:

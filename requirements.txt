@@ -1,5 +1,4 @@
 pyTelegramBotAPI
-pytubefix
 yt-dlp
 requests
 instaloader
@@ -8,7 +7,3 @@ postgrest
 storage3
 cloudscraper
 python-dotenv
-selenium
-webdriver-manager
-nodejs-wheel-binaries
-apify-client
