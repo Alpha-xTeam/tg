@@ -61,6 +61,19 @@ YTDL_COMMON_PARAMS = {
     }
 }
 
+# إضافة extractor_args إذا كان PO_TOKEN مخصص
+default_po_token = "Mnh2rX_7fhZWq3aRVJo3KvnAfjdNqJMKfqOMvbicacVt-unCK9yqsIVuSsMxdEKRE6N9MzV21D_qu4mijjE-upKm2KnqESEOzTybDC5ZPCF47CDRFgsBJ-4TSJcpNblhy_u5U7KdowIXAzWrdyesvU_mzPGE4fHnW8Y="
+default_visitor_data = "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
+
+if YOUTUBE_PO_TOKEN != default_po_token or YOUTUBE_VISITOR_DATA != default_visitor_data:
+    YTDL_COMMON_PARAMS['extractor_args'] = {
+        'youtube': {
+            'player_client': ['web', 'ios', 'android'],
+            'po_token': YOUTUBE_PO_TOKEN,
+            'visitor_data': YOUTUBE_VISITOR_DATA
+        }
+    }
+
 # مجلد حفظ الملفات المحملة
 # نستخدم /tmp لدعم الاستضافات التي تملك نظام ملفات للقراءة فقط
 OUTPUT = "/tmp/downloads"
@@ -423,7 +436,7 @@ def get_yt_formats(url):
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
-            yt = YouTube(url)
+            yt = YouTube(url, client='WEB', use_po_token=True)
             return {
                 'title': yt.title,
                 'thumbnail': yt.thumbnail_url,
@@ -498,7 +511,7 @@ def download_vd(url, format_id=None):
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
-            yt = YouTube(url)
+            yt = YouTube(url, client='WEB', use_po_token=True)
             stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
             if not stream:
                 return None, None
