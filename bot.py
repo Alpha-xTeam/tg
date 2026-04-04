@@ -928,27 +928,44 @@ def start(msg):
                     pass
 
     welcome_text = (
-        f"أهلاً “ {msg.from_user.first_name} “ ☕️،\n\n"
-        "يمكنك من خلالي تحميل من :\n"
-        "( اليوتيوب ، انستكرام ، تيكتوك ، سبوتيفاي ، فيسبوك ، كوكل ، تويتر ، كوكل درايف ، دييزر ، ثريدز ، سنابشات ، ساوندكلاود ، بنترست ، لايكيي ، كواي )،\n\n"
-        "ويمكنك ايضاً من خلالي البحث عن الصور 🔍 :\n"
-        "( فقط ارسل الصورة وسيتم ارسال لك الصور المشابهة )\n\n"
-        
-        
+        f"👋 *أهلاً بك يا* {msg.from_user.first_name} *في بوت التحميل الذكي!*\n\n"
+        "🚀 *أنا بوت متخصص في تحميل الفيديوهات والصوتيات من:* \n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📺 *YouTube* | 📸 *Instagram* | 🎵 *TikTok*\n"
+        "🎧 *Spotify* | 👥 *Facebook* | 🌐 *Google*\n"
+        "🐦 *Twitter* | 📁 *Google Drive* | 🎶 *Deezer*\n"
+        "🧵 *Threads* | 👻 *Snapchat* | 📻 *SoundCloud*\n"
+        "📌 *Pinterest* | 🎬 *Likee* | 🎥 *Kwai*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🔍 *البحث عن الصور:*\n"
+        "ارسل أي صورة وسأقوم بالبحث عن نتائج مشابهة لها فوراً.\n\n"
+        "💡 *كيفية الاستخدام:*\n"
+        "فقط أرسل رابط الفيديو أو المنشور الذي تود تحميله، وسأقوم بالباقي!"
     )
     
-    # إذا كان المستخدم هو الأدمن، أضف زر لوحة التحكم
-    markup = None
-    if msg.chat.id == ADMIN_ID:
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("📊 إحصائيات", "📢 إذاعة")
-        markup.add("📢 اشتراك إجباري", "🔧 إعدادات القناة")
-        markup.add("📝 جلب ملف users.json", "📂 جلب ملف config.json")
-        markup.add("🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم")
-        markup.add("🔄 تحديث PO Token")
-        welcome_text += "\n\n🛠️ *مرحباً أيها المطور، يمكنك التحكم بالبوت أدناه:* "
+    # جلب إعدادات القناة للزر
+    config = get_config()
+    channel_url = f"https://t.me/{config['channel_id'].replace('@','')}"
 
-    bot.send_message(msg.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
+    # إعداد لوحة الأزرار (أزرار تحت الرسالة مباشرة)
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton("📢 تابع قناتنا", url=channel_url))
+    
+    # إذا كان المستخدم هو الأدمن، نستخدم ReplyKeyboardMarkup للأوامر الإدارية كما كانت
+    # أو يمكننا إبقاؤها كأزرار تحت الرسالة للمستخدمين العاديين
+    if msg.chat.id == ADMIN_ID:
+        admin_markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        admin_markup.add("📊 إحصائيات", "📢 إذاعة")
+        admin_markup.add("📢 اشتراك إجباري", "🔧 إعدادات القناة")
+        admin_markup.add("📝 جلب ملف users.json", "📂 جلب ملف config.json")
+        admin_markup.add("🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم")
+        admin_markup.add("🔄 تحديث PO Token")
+        welcome_text += "\n\n🛠️ *مرحباً أيها المطور، يمكنك التحكم بالبوت أدناه:* "
+        bot.send_message(msg.chat.id, welcome_text, reply_markup=admin_markup, parse_mode="Markdown")
+        # إرسال زر القناة كرسالة منفصلة أو دمجه (هنا فضلنا إرسال الرسالة مع زر القناة أسفلها)
+        bot.send_message(msg.chat.id, "—————————————————", reply_markup=markup)
+    else:
+        bot.send_message(msg.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
 
 # لوحة تحكم الأدمن
