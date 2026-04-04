@@ -39,6 +39,12 @@ except ImportError:
 import yt_dlp
 import requests
 
+# استيراد youtube-dl كبديل
+try:
+    import youtube_dl as yt_dl
+except ImportError:
+    yt_dl = None
+
 # استيراد pytubefix كبديل للتنزيل من يوتيوب
 try:
     from pytubefix import YouTube
@@ -433,6 +439,34 @@ def get_yt_formats(url):
     except Exception as e:
         print(f"yt-dlp info fetch failed: {e}")
 
+    # محاولة باستخدام youtube_dl كبديل
+    if yt_dl:
+        try:
+            ydl_opts = YTDL_COMMON_PARAMS.copy()
+            ydl_opts.pop('extractor_args', None)
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            with yt_dl.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    return None
+                formats = []
+                for f in info.get('formats', []):
+                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
+                        formats.append({
+                            'format_id': f['format_id'],
+                            'resolution': f.get('resolution') or f"{f.get('height', '?')}p",
+                            'ext': f.get('ext', 'mp4'),
+                            'filesize': f.get('filesize', 0),
+                        })
+                return {
+                    'title': info.get('title', 'Video'),
+                    'thumbnail': info.get('thumbnail'),
+                    'formats': formats[:10],
+                    'method': 'youtube_dl'
+                }
+        except Exception as e:
+            print(f"youtube_dl info fetch failed: {e}")
+
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
@@ -510,6 +544,31 @@ def download_vd(url, format_id=None):
     except Exception as e:
         print(f"download_vd Error: {e}")
 
+    # محاولة باستخدام youtube_dl كبديل
+    if yt_dl:
+        try:
+            ydl_opts = YTDL_COMMON_PARAMS.copy()
+            ydl_opts.pop('extractor_args', None)
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['outtmpl'] = f'{OUTPUT}/%(title)s_%(id)s.%(ext)s'
+            with yt_dl.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if not info:
+                    return None, None
+                file_path = ydl.prepare_filename(info)
+                if not os.path.exists(file_path):
+                    base, _ = os.path.splitext(file_path)
+                    for ext in ['.mp4', '.mkv', '.webm', '.flv']:
+                        if os.path.exists(base + ext):
+                            file_path = base + ext
+                            break
+                if os.path.exists(file_path):
+                    safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                    upload_to_supabase(file_path, safe_file_name)
+                    return file_path, info.get('title', 'Video')
+        except Exception as e:
+            print(f"youtube_dl download_vd Error: {e}")
+
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
@@ -552,7 +611,7 @@ def download_mp3(url):
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            'format': 'bestaudio/best',
+            'format': 'bestaudio',
             'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
             'extractor_args': {
                 'youtube': {

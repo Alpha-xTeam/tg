@@ -10,3 +10,4 @@ python-dotenv
 tiktok-dlpy
 gallery-dl
 pytubefix
+youtube-dl
