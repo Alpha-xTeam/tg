@@ -21,18 +21,10 @@ RUN pip install --no-cache-dir -r requirements.txt yt-dlp
 COPY . .
 
 # Ensure the app directory is writable
-RUN chmod -R 777 /app
+RUN chmod -R 777 /app && mkdir -p /app/downloads && chmod 777 /app/downloads
 
-# Environment variables will be read from the host or .env file
-# Ensure logs are visible in docker logs
+# Environment variables
 ENV PYTHONUNBUFFERED=1
-
-# Create downloads directory to avoid permission issues
-RUN mkdir -p /app/downloads && chmod 777 /app/downloads
 
 # Command to run the bot
-CMD ["python", "bot.py"]
-ENV PYTHONUNBUFFERED=1
-
-# Run the bot
 CMD ["python", "bot.py"]
