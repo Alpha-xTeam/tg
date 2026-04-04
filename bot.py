@@ -522,7 +522,7 @@ def get_yt_formats(url):
             "uploader": "none" # تأكيد عدم الرغبة في الرفع لأي مكان
         }
         # استخدام Actor خفيف لجلب المعلومات بسرعة
-        run = apify_client.actor("apify/youtube-video-downloader").call(run_input=run_input, timeout_secs=60)
+        run = apify_client.actor("jupitrrr/youtube-video-downloader").call(run_input=run_input, timeout_secs=60)
         
         for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
             if "title" in item:
@@ -611,8 +611,8 @@ def download_vd(url, format_id=None):
             "uploader": "none"
         }
         
-        # تشغيل الـ Actor (apify/youtube-video-downloader)
-        run = apify_client.actor("apify/youtube-video-downloader").call(run_input=run_input, timeout_secs=300)
+        # تشغيل الـ Actor (jupitrrr/youtube-video-downloader)
+        run = apify_client.actor("jupitrrr/youtube-video-downloader").call(run_input=run_input, timeout_secs=300)
         
         # جلب النتائج من الـ dataset
         for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
