@@ -710,6 +710,7 @@ def download_tiktok_photos(url):
 def download_social(url, platform="social"):
     # معالجة خاصة لصور تيك توك أولاً (yt-dlp لا يدعم روابط /photo/)
     if "tiktok.com" in url and "/photo/" in url:
+        print(f"TikTok photo URL detected: {url}")
         return download_tiktok_photos(url)
 
     if "instagram.com" in url:
@@ -1127,6 +1128,7 @@ def handle_youtube_url(msg):
 # التعامل مع روابط تيك توك وانستقرام وساوند كلاود
 @bot.message_handler(func=lambda message: any(x in message.text for x in ["tiktok.com", "instagram.com", "soundcloud.com"]))
 def handle_social_url(msg):
+    print(f"[DEBUG] TikTok/Insta/SoundCloud handler triggered. msg.text: {msg.text}")
     if not check_sub(msg.chat.id):
         config = get_config()
         markup = telebot.types.InlineKeyboardMarkup()
@@ -1137,7 +1139,9 @@ def handle_social_url(msg):
 
     url = msg.text.strip()
     chat_id = msg.chat.id
-    
+
+    print(f"[DEBUG] handle_social_url called with url: {url}")
+
     if "instagram.com" in url:
         platform = "انستقرام"
         increment_stat("insta_count")
