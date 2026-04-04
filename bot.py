@@ -41,6 +41,7 @@ YTDL_COMMON_PARAMS = {
     'quiet': True,
     'no_warnings': True,
     'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+    'cookiefile': 'cookies.txt', # إضافة ملف الكوكيز لمحاكاة التصفح الحقيقي
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -516,11 +517,12 @@ def get_yt_formats(url):
     # محاولة جلب المعلومات عبر Apify (أكثر استقراراً من المحاولات المحلية)
     try:
         run_input = { 
-            "videos": [{ "url": url }],
-            "onlyCollectVideoInfo": True  # هذا الخيار مهم جداً لإخبار الأداة بجلب المعلومات فقط دون الرفع لمكان آخر
+            "urls": [url],  # استخدام الاسم الصحيح للحقل URLs بدلاً من videos
+            "onlyCollectVideoInfo": True,
+            "uploader": "none" # تأكيد عدم الرغبة في الرفع لأي مكان
         }
         # استخدام Actor خفيف لجلب المعلومات بسرعة
-        run = apify_client.actor("UUhJDfKJT2SsXdclR").call(run_input=run_input, timeout_secs=60)
+        run = apify_client.actor("apify/youtube-video-downloader").call(run_input=run_input, timeout_secs=60)
         
         for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
             if "title" in item:
@@ -602,14 +604,15 @@ def download_vd(url, format_id=None):
             quality = format_id
 
         run_input = {
-            "videos": [{ "url": url }],
+            "urls": [url],
             "preferredQuality": quality,
             "preferredFormat": "mp4",
-            "onlyCollectVideoInfo": True # تأكيد الحصول على رابط التحميل المباشر فقط
+            "onlyCollectVideoInfo": True,
+            "uploader": "none"
         }
         
-        # تشغيل الـ Actor (UUhJDfKJT2SsXdclR)
-        run = apify_client.actor("UUhJDfKJT2SsXdclR").call(run_input=run_input, timeout_secs=300)
+        # تشغيل الـ Actor (apify/youtube-video-downloader)
+        run = apify_client.actor("apify/youtube-video-downloader").call(run_input=run_input, timeout_secs=300)
         
         # جلب النتائج من الـ dataset
         for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
