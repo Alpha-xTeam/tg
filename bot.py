@@ -616,9 +616,10 @@ def download_social(url, platform="social"):
             pass
 
     try:
+        # الطريقة الأولى: yt-dlp مع دعم كامل للـ Carousel
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
-            'format': 'best[ext=mp4]/best[ext=jpg]/best[ext=png]/best',  # جرب الفيديو أولاً، ثم الصور
+            'format': 'best[ext=mp4]/best[ext=jpg]/best[ext=png]/best',
             'quiet': True,
             'no_warnings': True,
             'skip_unavailable_fragments': True,
@@ -626,25 +627,32 @@ def download_social(url, platform="social"):
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
             }
         }
-        
+
         # إضافة ملف الكوكيز إن وجد لتجاوز حظر انستقرام
         if os.path.exists(INSTA_COOKIES_FILE):
             ydl_opts['cookiefile'] = INSTA_COOKIES_FILE
         elif os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
-        
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            
-            # التحقق مما إذا كان المنشور يحتوي على عدة صور (Carousel)
+
             files = []
-            if 'entries' in info:
+
+            # الحالة 1: منشور يحتوي على عدة عناصر (Carousel/Playlist)
+            if 'entries' in info and info['entries']:
                 for entry in info['entries']:
+                    if not entry:
+                        continue
                     file_path = ydl.prepare_filename(entry)
                     if os.path.exists(file_path):
                         ext = os.path.splitext(file_path)[1].lower()
                         file_type = 'video' if ext == '.mp4' else 'photo'
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
                         files.append({'path': file_path, 'type': file_type})
+
+            # الحالة 2: عنصر واحد (فيديو أو صورة واحدة)
             else:
                 file_path = ydl.prepare_filename(info)
                 # البحث عن الملف الفعلي (قد يختلف الامتداد)
@@ -655,21 +663,35 @@ def download_social(url, platform="social"):
                         if os.path.exists(temp_path):
                             file_path = temp_path
                             break
-                
+
                 if os.path.exists(file_path):
                     ext = os.path.splitext(file_path)[1].lower()
                     file_type = 'video' if ext == '.mp4' else 'photo'
-                    
-                    # الرفع إلى Supabase Storage للنسخ الاحتياطي
                     safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
                     upload_to_supabase(file_path, safe_file_name)
-                    
                     files.append({'path': file_path, 'type': file_type})
-            
+
+            # الحالة 3: تيك توك متعدد الصور — yt-dlp يحفظ كل صورة كملف منفصل
+            # مع نفس القاعدة لكن بأرقام تسلسلية: {title}_{id}.jpg -> {title}_{id}_1.jpg
+            if not files and info:
+                base_name = ydl.prepare_filename(info)
+                base_no_ext = os.path.splitext(base_name)[0]
+
+                # البحث عن ملفات مرقمة مثل *_1.jpg, *_2.jpg
+                for i in range(1, 21):  # حد أقصى 20 صورة
+                    for ext in ['jpg', 'jpeg', 'png', 'webp', 'mp4']:
+                        potential = f'{base_no_ext}_{i}.{ext}'
+                        if os.path.exists(potential):
+                            file_type = 'video' if ext == 'mp4' else 'photo'
+                            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(potential))
+                            upload_to_supabase(potential, safe_file_name)
+                            files.append({'path': potential, 'type': file_type})
+                            break
+
             if not files:
                 print(f"{platform}: لم يتم العثور على ملفات قابلة للتنزيل")
                 return [], None
-            
+
             safe_title = re.sub(r'[\\/*?:"<>|]', "_", info.get('title', platform))
             return files, safe_title
             
@@ -1004,8 +1026,8 @@ def handle_social_url(msg):
         
         if not files:
             error_text = f"❌ فشل تحميل محتوى {platform}.\n"
-            if "tiktok" in url and "photo" in url:
-                error_text += "ملاحظة: صور تيك توك قد لا تكون مدعومة بشكل كامل. الرجاء محاولة رابط فيديو."
+            if "tiktok" in url:
+                error_text += "قد يكون الحساب خاصاً، الرابط غير صحيح، أو هناك قيود على المنشور."
             else:
                 error_text += "قد يكون الحساب خاصاً أو الرابط غير صحيح."
             bot.edit_message_text(error_text, chat_id, status_msg.message_id)
