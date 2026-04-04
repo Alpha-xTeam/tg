@@ -1266,6 +1266,7 @@ def show_stats(msg):
     yt_count = config.get("youtube_count", 0)
     insta_count = config.get("insta_count", 0)
     tiktok_count = config.get("tiktok_count", 0)
+    twitter_count = config.get("twitter_count", 0)
     
     stats_text = (
         "📊 *إحصائيات البوت الكاملة*\n\n"
@@ -1275,8 +1276,9 @@ def show_stats(msg):
         f"📺 *يوتيوب:* `{yt_count}`\n"
         f"📸 *انستقرام:* `{insta_count}`\n"
         f"🎵 *تيك توك:* `{tiktok_count}`\n"
+        f"🐦 *تويتر:* `{twitter_count}`\n"
         "━━━━━━━━━━━━━━━\n"
-        f"📈 *الإجمالي:* `{yt_count + insta_count + tiktok_count}`"
+        f"📈 *الإجمالي:* `{yt_count + insta_count + tiktok_count + twitter_count}`"
     )
     bot.reply_to(msg, stats_text, parse_mode="Markdown")
 
@@ -1515,8 +1517,8 @@ def handle_youtube_url(msg):
         bot.edit_message_text(caption, chat_id, status_msg.message_id, reply_markup=markup, parse_mode="Markdown")
 
 
-# التعامل مع روابط تيك توك وانستقرام وساوند كلاود
-@bot.message_handler(func=lambda message: any(x in message.text for x in ["tiktok.com", "instagram.com", "soundcloud.com"]))
+# التعامل مع روابط تيك توك وانستقرام وساوند كلاود وتويتر
+@bot.message_handler(func=lambda message: any(x in message.text for x in ["tiktok.com", "instagram.com", "soundcloud.com", "twitter.com", "x.com"]))
 def handle_social_url(msg):
     print(f"[DEBUG] TikTok/Insta/SoundCloud handler triggered. msg.text: {msg.text}")
     if not check_sub(msg.chat.id):
@@ -1553,6 +1555,9 @@ def handle_social_url(msg):
         increment_stat("tiktok_count")
     elif "soundcloud.com" in url:
         platform = "ساوند كلاود"
+    elif "twitter.com" in url or "x.com" in url:
+        platform = "تويتر"
+        increment_stat("twitter_count")
     else:
         platform = "منصة غير معروفة"
     
@@ -2001,7 +2006,7 @@ def handle_other_messages(msg):
     query = msg.text.strip()
     
     # التحقق من أن النص ليس رابطاً (لأننا تعاملنا مع الروابط في دوال أخرى)
-    if any(x in query for x in ["youtube.com", "youtu.be", "instagram.com", "tiktok.com"]):
+    if any(x in query for x in ["youtube.com", "youtu.be", "instagram.com", "tiktok.com", "twitter.com", "x.com"]):
         return # تم التعامل معه بالفعل
 
     import html
