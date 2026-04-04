@@ -436,6 +436,8 @@ def get_yt_formats(url):
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
+            import time
+            time.sleep(2)  # انتظار لتجنب rate limiting
             yt = YouTube(url, client='ANDROID')
             return {
                 'title': yt.title,
@@ -522,6 +524,24 @@ def download_vd(url, format_id=None):
                 return file_path, yt.title
         except Exception as e:
             print(f"pytubefix download_vd Error: {e}")
+
+    # محاولة باستخدام gallery-dl كبديل أخير
+    try:
+        import subprocess
+        result = subprocess.run(['gallery-dl', '--dest', OUTPUT, url], capture_output=True, text=True, timeout=120)
+        if result.returncode == 0:
+            # البحث عن الملف المحمل
+            for root, dirs, files in os.walk(OUTPUT):
+                for file in files:
+                    if file.endswith(('.mp4', '.webm', '.mkv', '.flv')):
+                        file_path = os.path.join(root, file)
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        return file_path, 'Video'
+        else:
+            print(f"gallery-dl failed: {result.stderr}")
+    except Exception as e:
+        print(f"gallery-dl download_vd Error: {e}")
 
     return None, None
 
