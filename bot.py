@@ -1621,6 +1621,22 @@ def handle_social_url(msg):
 def callback_download(call):
     chat_id = call.message.chat.id
 
+    # التحقق من الاشتراك الإجباري
+    if not check_sub(chat_id):
+        config = get_config()
+        markup = telebot.types.InlineKeyboardMarkup()
+        btn = telebot.types.InlineKeyboardButton("📢 اشترك في القناة", url=f"https://t.me/{config['channel_id'].replace('@','')}")
+        markup.add(btn)
+
+        sub_text = (
+            "⚠️ *عذراً عزيزي، يجب عليك الاشتراك أولاً!*\n\n"
+            "للاستفادة من خدمات البوت المجانية، يرجى الانضمام إلى قناتنا الرسمية ثم أرسل /start مرة أخرى.\n\n"
+            f"📍 القناة: *{config['channel_id']}*"
+        )
+        bot.answer_callback_query(call.id, "يجب الاشتراك في القناة أولاً!")
+        bot.send_message(chat_id, sub_text, reply_markup=markup, parse_mode="Markdown")
+        return
+
     if call.data == 'high_quality':
         url = user_data.get(call.from_user.id, {}).get('pending_high_quality')
         if url:
@@ -1892,6 +1908,21 @@ def handle_image_search(msg):
 # التعامل مع أي رسالة أخرى
 @bot.message_handler(func=lambda message: True)
 def handle_other_messages(msg):
+    # التحقق من الاشتراك الإجباري
+    if not check_sub(msg.chat.id):
+        config = get_config()
+        markup = telebot.types.InlineKeyboardMarkup()
+        btn = telebot.types.InlineKeyboardButton("📢 اشترك في القناة", url=f"https://t.me/{config['channel_id'].replace('@','')}")
+        markup.add(btn)
+
+        sub_text = (
+            "⚠️ *عذراً عزيزي، يجب عليك الاشتراك أولاً!*\n\n"
+            "للاستفادة من خدمات البوت المجانية، يرجى الانضمام إلى قناتنا الرسمية ثم أرسل /start مرة أخرى.\n\n"
+            f"📍 القناة: *{config['channel_id']}*"
+        )
+        bot.send_message(msg.chat.id, sub_text, reply_markup=markup, parse_mode="Markdown")
+        return
+
     # التحقق من الحظر
     config = get_config()
     if msg.from_user.id in config.get("blocked_users", []):
