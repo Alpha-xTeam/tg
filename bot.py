@@ -49,7 +49,7 @@ except ImportError:
 YTDL_COMMON_PARAMS = {
     'quiet': True,
     'no_warnings': True,
-    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+    'format': 'best',
     'cookiefile': 'cookies.txt', # إضافة ملف الكوكيز لمحاكاة التصفح الحقيقي
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -436,7 +436,7 @@ def get_yt_formats(url):
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
-            yt = YouTube(url, client='WEB', use_po_token=True)
+            yt = YouTube(url, client='ANDROID')
             return {
                 'title': yt.title,
                 'thumbnail': yt.thumbnail_url,
@@ -511,7 +511,7 @@ def download_vd(url, format_id=None):
     # محاولة باستخدام pytubefix كبديل
     if YouTube:
         try:
-            yt = YouTube(url, client='WEB', use_po_token=True)
+            yt = YouTube(url, client='ANDROID')
             stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
             if not stream:
                 return None, None
