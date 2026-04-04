@@ -951,19 +951,19 @@ def start(msg):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(telebot.types.InlineKeyboardButton("📢 تابع قناتنا", url=channel_url))
     
-    # إذا كان المستخدم هو الأدمن، نستخدم ReplyKeyboardMarkup للأوامر الإدارية كما كانت
-    # أو يمكننا إبقاؤها كأزرار تحت الرسالة للمستخدمين العاديين
+    # إذا كان المستخدم هو الأدمن، نرسل رسالة الترحيب مع زر القناة، ونظهر كيبورد التحكم أيضاً
     if msg.chat.id == ADMIN_ID:
-        admin_markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        admin_markup.add("📊 إحصائيات", "📢 إذاعة")
-        admin_markup.add("📢 اشتراك إجباري", "🔧 إعدادات القناة")
-        admin_markup.add("📝 جلب ملف users.json", "📂 جلب ملف config.json")
-        admin_markup.add("🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم")
-        admin_markup.add("🔄 تحديث PO Token")
+        admin_keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        admin_keyboard.add("📊 إحصائيات", "📢 إذاعة")
+        admin_keyboard.add("📢 اشتراك إجباري", "🔧 إعدادات القناة")
+        admin_keyboard.add("📝 جلب ملف users.json", "📂 جلب ملف config.json")
+        admin_keyboard.add("🧹 تنظيف المجلدات المؤقتة", "🚫 حظر مستخدم")
+        admin_keyboard.add("🔄 تحديث PO Token")
         welcome_text += "\n\n🛠️ *مرحباً أيها المطور، يمكنك التحكم بالبوت أدناه:* "
-        bot.send_message(msg.chat.id, welcome_text, reply_markup=admin_markup, parse_mode="Markdown")
-        # إرسال زر القناة كرسالة منفصلة أو دمجه (هنا فضلنا إرسال الرسالة مع زر القناة أسفلها)
-        bot.send_message(msg.chat.id, "—————————————————", reply_markup=markup)
+        
+        # إرسال الرسالة مع زر القناة (Inline) وكيبورد الأدمن (Reply) في نفس الوقت
+        bot.send_message(msg.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(msg.chat.id, "تم تفعيل لوحة التحكم 🛠️", reply_markup=admin_keyboard)
     else:
         bot.send_message(msg.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
