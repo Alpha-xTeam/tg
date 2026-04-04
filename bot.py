@@ -573,77 +573,48 @@ def download_tiktok_photos(url):
             'Referer': 'https://www.tiktok.com/',
         }
 
-        response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+        # استخدام صفحة الـ Embed للحصول على بيانات الصور
+        embed_url = f'https://www.tiktok.com/embed/v2/{video_id}'
+        response = requests.get(embed_url, headers=headers, timeout=30, allow_redirects=True)
+
+        if response.status_code != 200:
+            # Fallback: محاولة الوصول للرابط الأصلي
+            response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+
         html_content = response.text
 
-        # استخراج بيانات JSON من الصفحة
+        # استخراج روابط الصور من الصفحة
         import json
         image_urls = []
 
-        # الطريقة 1: البحث عن SIGI_STATE
-        patterns = [
-            r'"imagePost"\s*:\s*\{[^}]*"images"\s*:\s*(\[.*?\])',
-            r'"images"\s*:\s*(\[.*?\])',
-        ]
+        # الطريقة 1: البحث عن روابط photomode-image في HTML
+        raw_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com[^\s"<>\\]+)', html_content)
 
-        for pattern in patterns:
-            match = re.search(pattern, html_content, re.DOTALL)
-            if match:
-                try:
-                    images_data = json.loads(match.group(1))
-                    for img in images_data:
-                        if isinstance(img, dict):
-                            img_url = img.get('imageURL', {}).get('urlList', [None])[0]
-                            if img_url:
-                                image_urls.append(img_url)
-                        elif isinstance(img, str):
-                            image_urls.append(img)
-                    break
-                except:
-                    pass
+        # فلترة: نريد فقط صور الـ photomode (وليس الصور المصغرة أو الأفاتار)
+        seen = set()
+        for raw_url in raw_urls:
+            # تنظيف الروابط من HTML entities
+            clean_url = raw_url.replace('&amp;', '&').replace('\u0026', '&')
 
-        # الطريقة 2: البحث عن render data في <script>
-        if not image_urls:
-            script_pattern = r'<script\s+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>'
-            match = re.search(script_pattern, html_content, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group(1))
-                    # البحث عن image URLs في البيانات
-                    def find_image_urls(obj, found=None):
-                        if found is None:
-                            found = []
-                        if isinstance(obj, dict):
-                            for key, value in obj.items():
-                                if key == 'imageURL' and isinstance(value, dict):
-                                    url_list = value.get('urlList', [])
-                                    if url_list:
-                                        found.append(url_list[0])
-                                elif key == 'imageList' and isinstance(value, list):
-                                    for item in value:
-                                        if isinstance(item, dict):
-                                            url_list = item.get('imageURL', {}).get('urlList', [])
-                                            if url_list:
-                                                found.append(url_list[0])
-                                else:
-                                    find_image_urls(value, found)
-                        elif isinstance(obj, list):
-                            for item in obj:
-                                find_image_urls(item, found)
-                        return found
+            # فقط صور الـ photomode
+            if 'photomode-image' not in clean_url:
+                continue
 
-                    image_urls = find_image_urls(data)
-                except:
-                    pass
-
-        # الطريقة 3: البحث عن روابط الصور المباشرة في HTML
-        if not image_urls:
-            img_matches = re.findall(r'https://p\d+-[\w.-]+\.tiktokcdn\.com[^\s"<>]+', html_content)
-            image_urls = list(set(img_matches))  # إزالة التكرار
+            # إزالة التكرار باستخدام الجزء الأساسي من الرابط (بدون معاملات CDN)
+            # مثال: c5a9de7547bc4151af032c0a536ca8eb هو المعرف الفريد
+            id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
+            if id_match:
+                img_id = id_match.group(1)
+                if img_id in seen:
+                    continue
+                seen.add(img_id)
+                image_urls.append(clean_url)
 
         if not image_urls:
-            print("TikTok Photo: No images found in page")
+            print("TikTok Photo: No photomode images found in embed page")
             return [], None
+
+        print(f"✅ Found {len(image_urls)} TikTok photos")
 
         # تحميل الصور
         files = []
