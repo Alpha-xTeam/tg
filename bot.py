@@ -555,6 +555,127 @@ def download_mp3(url):
         return None, None
 
 
+# دالة تحميل صور تيك توك (yt-dlp لا يدعم روابط /photo/)
+def download_tiktok_photos(url):
+    try:
+        # استخراج معرف الفيديو من الرابط
+        match = re.search(r'/photo/(\d+)', url)
+        if not match:
+            return [], None
+
+        video_id = match.group(1)
+        safe_title = f"tiktok_photo_{video_id}"
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.tiktok.com/',
+        }
+
+        response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+        html_content = response.text
+
+        # استخراج بيانات JSON من الصفحة
+        import json
+        image_urls = []
+
+        # الطريقة 1: البحث عن SIGI_STATE
+        patterns = [
+            r'"imagePost"\s*:\s*\{[^}]*"images"\s*:\s*(\[.*?\])',
+            r'"images"\s*:\s*(\[.*?\])',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, html_content, re.DOTALL)
+            if match:
+                try:
+                    images_data = json.loads(match.group(1))
+                    for img in images_data:
+                        if isinstance(img, dict):
+                            img_url = img.get('imageURL', {}).get('urlList', [None])[0]
+                            if img_url:
+                                image_urls.append(img_url)
+                        elif isinstance(img, str):
+                            image_urls.append(img)
+                    break
+                except:
+                    pass
+
+        # الطريقة 2: البحث عن render data في <script>
+        if not image_urls:
+            script_pattern = r'<script\s+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>'
+            match = re.search(script_pattern, html_content, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(1))
+                    # البحث عن image URLs في البيانات
+                    def find_image_urls(obj, found=None):
+                        if found is None:
+                            found = []
+                        if isinstance(obj, dict):
+                            for key, value in obj.items():
+                                if key == 'imageURL' and isinstance(value, dict):
+                                    url_list = value.get('urlList', [])
+                                    if url_list:
+                                        found.append(url_list[0])
+                                elif key == 'imageList' and isinstance(value, list):
+                                    for item in value:
+                                        if isinstance(item, dict):
+                                            url_list = item.get('imageURL', {}).get('urlList', [])
+                                            if url_list:
+                                                found.append(url_list[0])
+                                else:
+                                    find_image_urls(value, found)
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                find_image_urls(item, found)
+                        return found
+
+                    image_urls = find_image_urls(data)
+                except:
+                    pass
+
+        # الطريقة 3: البحث عن روابط الصور المباشرة في HTML
+        if not image_urls:
+            img_matches = re.findall(r'https://p\d+-[\w.-]+\.tiktokcdn\.com[^\s"<>]+', html_content)
+            image_urls = list(set(img_matches))  # إزالة التكرار
+
+        if not image_urls:
+            print("TikTok Photo: No images found in page")
+            return [], None
+
+        # تحميل الصور
+        files = []
+        for idx, img_url in enumerate(image_urls[:20], 1):
+            try:
+                img_response = requests.get(img_url, headers=headers, timeout=30)
+                if img_response.status_code == 200:
+                    file_path = os.path.join(OUTPUT, f"{safe_title}_{idx}.jpg")
+                    with open(file_path, 'wb') as f:
+                        f.write(img_response.content)
+
+                    if os.path.exists(file_path):
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        files.append({
+                            'path': file_path,
+                            'type': 'photo'
+                        })
+                        print(f"✅ Downloaded TikTok photo {idx}/{len(image_urls)}")
+            except Exception as e:
+                print(f"Failed to download TikTok photo {idx}: {e}")
+                continue
+
+        if not files:
+            return [], None
+
+        return files, safe_title
+
+    except Exception as e:
+        print(f"TikTok Photo Download Error: {e}")
+        return [], None
+
 # دالة تحميل فيديو أو صور من تيك توك أو انستقرام
 def download_social(url, platform="social"):
     if "instagram.com" in url:
@@ -564,12 +685,12 @@ def download_social(url, platform="social"):
             match = re.search(r'/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)', url)
             if not match:
                 return [], None
-            
+
             shortcode = match.group(1)
             post = instaloader.Post.from_shortcode(L.context, shortcode)
-            
+
             files = []
-            
+
             # التحقق مما إذا كان المنشور يحتوي على عدة وسائط (Carousel/Slideshow)
             if post.typename == 'GraphSidecar':
                 L.download_post(post, target=OUTPUT)
@@ -585,14 +706,14 @@ def download_social(url, platform="social"):
                             safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(potential_path))
                             upload_to_supabase(potential_path, safe_file_name)
                             files.append({
-                                'path': potential_path, 
+                                'path': potential_path,
                                 'type': 'video' if ext == 'mp4' else 'photo'
                             })
                             break
             elif post.is_video:
                 # التحميل يتم في مجلد OUTPUT
                 L.download_post(post, target=OUTPUT)
-                
+
                 # البحث عن ملف الفيديو المحمل (غالباً سيكون بنفس اسم الـ shortcode)
                 file_path = os.path.join(OUTPUT, f"{shortcode}.mp4")
                 if os.path.exists(file_path):
@@ -607,13 +728,17 @@ def download_social(url, platform="social"):
                     safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
                     upload_to_supabase(file_path, safe_file_name)
                     files.append({'path': file_path, 'type': 'photo'})
-            
+
             return files, post.caption[:50] if post.caption else platform
-            
+
         except Exception as e:
             print(f"Instaloader Error: {e}")
             # في حال فشل instaloader، ننتقل للطريقة القديمة (yt-dlp) كنسخة احتياطية
             pass
+
+    # معالجة خاصة لصور تيك توك (yt-dlp لا يدعم روابط /photo/)
+    if "tiktok.com" in url and "/photo/" in url:
+        return download_tiktok_photos(url)
 
     try:
         # الطريقة الأولى: yt-dlp مع دعم كامل للـ Carousel
@@ -997,6 +1122,8 @@ def handle_social_url(msg):
     # إظهار حالة الإرسال للمستخدم
     if platform == "ساوند كلاود":
         bot.send_chat_action(chat_id, 'upload_audio')
+    elif platform == "تيك توك" and "/photo/" in url:
+        bot.send_chat_action(chat_id, 'upload_photo')
     else:
         bot.send_chat_action(chat_id, 'upload_video')
     
@@ -1026,10 +1153,7 @@ def handle_social_url(msg):
         
         if not files:
             error_text = f"❌ فشل تحميل محتوى {platform}.\n"
-            if "tiktok" in url:
-                error_text += "قد يكون الحساب خاصاً، الرابط غير صحيح، أو هناك قيود على المنشور."
-            else:
-                error_text += "قد يكون الحساب خاصاً أو الرابط غير صحيح."
+            error_text += "قد يكون الحساب خاصاً، الرابط غير صحيح، أو هناك قيود على المنشور."
             bot.edit_message_text(error_text, chat_id, status_msg.message_id)
             return
 
