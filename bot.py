@@ -45,13 +45,6 @@ YTDL_COMMON_PARAMS = {
     'no_warnings': True,
     'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
     'cookiefile': 'cookies.txt', # إضافة ملف الكوكيز لمحاكاة التصفح الحقيقي
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['ios', 'web'],
-            'po_token': YOUTUBE_PO_TOKEN,
-            'visitor_data': YOUTUBE_VISITOR_DATA
-        }
-    },
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
