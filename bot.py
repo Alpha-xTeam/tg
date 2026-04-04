@@ -568,17 +568,21 @@ def download_tiktok_photos(url):
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Referer': 'https://www.tiktok.com/',
+            'sec-ch-ua': '"Not A(Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
         }
 
         # استخدام صفحة الـ Embed للحصول على بيانات الصور
         embed_url = f'https://www.tiktok.com/embed/v2/{video_id}'
         response = requests.get(embed_url, headers=headers, timeout=30, allow_redirects=True)
 
-        if response.status_code != 200:
-            # Fallback: محاولة الوصول للرابط الأصلي
+        # إذا فشل الـ embed، حاول الرابط الأصلي
+        if response.status_code != 200 or len(response.text) < 10000:
+            print(f"Embed page returned {response.status_code}, trying original URL...")
             response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
 
         html_content = response.text
@@ -601,7 +605,6 @@ def download_tiktok_photos(url):
                 continue
 
             # إزالة التكرار باستخدام الجزء الأساسي من الرابط (بدون معاملات CDN)
-            # مثال: c5a9de7547bc4151af032c0a536ca8eb هو المعرف الفريد
             id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
             if id_match:
                 img_id = id_match.group(1)
@@ -610,8 +613,64 @@ def download_tiktok_photos(url):
                 seen.add(img_id)
                 image_urls.append(clean_url)
 
+        # الطريقة 2: إذا لم نجد صور، حاول استخراج من __UNIVERSAL_DATA
         if not image_urls:
-            print("TikTok Photo: No photomode images found in embed page")
+            uni_match = html_content.find('__UNIVERSAL_DATA_FOR_REHYDRATION__')
+            if uni_match >= 0:
+                tag_start = html_content.find('>', uni_match)
+                tag_end = html_content.find('</script>', tag_start)
+                if tag_start >= 0 and tag_end >= 0:
+                    try:
+                        data = json.loads(html_content[tag_start+1:tag_end])
+                        # البحث عن image URLs في البيانات
+                        def find_image_urls(obj, found=None, depth=0):
+                            if found is None:
+                                found = []
+                            if depth > 15:
+                                return found
+                            if isinstance(obj, dict):
+                                for key, value in obj.items():
+                                    if key == 'imageURL' and isinstance(value, dict):
+                                        url_list = value.get('urlList', [])
+                                        if url_list:
+                                            found.append(url_list[0])
+                                    elif key == 'imageList' and isinstance(value, list):
+                                        for item in value:
+                                            if isinstance(item, dict):
+                                                url_list = item.get('imageURL', {}).get('urlList', [])
+                                                if url_list:
+                                                    found.append(url_list[0])
+                                    else:
+                                        find_image_urls(value, found, depth+1)
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    find_image_urls(item, found, depth+1)
+                            return found
+
+                        image_urls = find_image_urls(data)
+                        print(f"Found {len(image_urls)} images from UNIVERSAL_DATA")
+                    except:
+                        pass
+
+        # الطريقة 3: البحث عن أي روابط صور من tiktokcdn
+        if not image_urls:
+            all_cdn_urls = re.findall(r'(https://p\d+-[\w.-]+\.tiktokcdn\.com/[^\s"<>\\]+)', html_content)
+            # فلترة الصور الكبيرة فقط (تجنب الصور المصغرة)
+            for raw_url in all_cdn_urls:
+                clean_url = raw_url.replace('&amp;', '&').replace('\u0026', '&')
+                # تجنب صور الأفاتار والصور المصغرة
+                if any(x in clean_url.lower() for x in ['avatar', 'cropcenter', 'thumbnail', 'favicon']):
+                    continue
+                # استخراج المعرف الفريد
+                id_match = re.search(r'/([a-f0-9]{32})~', clean_url)
+                if id_match:
+                    img_id = id_match.group(1)
+                    if img_id not in seen:
+                        seen.add(img_id)
+                        image_urls.append(clean_url)
+
+        if not image_urls:
+            print(f"TikTok Photo: No images found. Page length: {len(html_content)}, embed status: {response.status_code}")
             return [], None
 
         print(f"✅ Found {len(image_urls)} TikTok photos")
@@ -649,6 +708,10 @@ def download_tiktok_photos(url):
 
 # دالة تحميل فيديو أو صور من تيك توك أو انستقرام
 def download_social(url, platform="social"):
+    # معالجة خاصة لصور تيك توك أولاً (yt-dlp لا يدعم روابط /photo/)
+    if "tiktok.com" in url and "/photo/" in url:
+        return download_tiktok_photos(url)
+
     if "instagram.com" in url:
         try:
             # استخراج الكود القصير من الرابط (shortcode)
@@ -706,10 +769,6 @@ def download_social(url, platform="social"):
             print(f"Instaloader Error: {e}")
             # في حال فشل instaloader، ننتقل للطريقة القديمة (yt-dlp) كنسخة احتياطية
             pass
-
-    # معالجة خاصة لصور تيك توك (yt-dlp لا يدعم روابط /photo/)
-    if "tiktok.com" in url and "/photo/" in url:
-        return download_tiktok_photos(url)
 
     try:
         # الطريقة الأولى: yt-dlp مع دعم كامل للـ Carousel
@@ -1121,7 +1180,7 @@ def handle_social_url(msg):
                 return
 
         files, safe_title = download_social(url, platform)
-        
+
         if not files:
             error_text = f"❌ فشل تحميل محتوى {platform}.\n"
             error_text += "قد يكون الحساب خاصاً، الرابط غير صحيح، أو هناك قيود على المنشور."
