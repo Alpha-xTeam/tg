@@ -14,6 +14,11 @@ import json
 from dotenv import load_dotenv
 load_dotenv()
 
+# إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
+# استخدم أداة youtube-po-token-generator للحصول على هذه القيم
+YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "Mnh2rX_7fhZWq3aRVJo3KvnAfjdNqJMKfqOMvbicacVt-unCK9yqsIVuSsMxdEKRE6N9MzV21D_qu4mijjE-upKm2KnqESEOzTybDC5ZPCF47CDRFgsBJ-4TSJcpNblhy_u5U7KdowIXAzWrdyesvU_mzPGE4fHnW8Y="
+YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
+
 # استيراد مكتبة supabase للتعامل مع قاعدة البيانات
 try:
     from supabase import create_client, Client
@@ -302,37 +307,6 @@ os.makedirs(OUTPUT, exist_ok=True)
 # إعدادات البروكسي لتجاوز حظر يوتيوب (اختياري)
 PROXY = os.environ.get("PROXY_URL")
 
-# إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
-# استخدم أداة youtube-po-token-generator للحصول على هذه القيم
-YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "Mnh2rX_7fhZWq3aRVJo3KvnAfjdNqJMKfqOMvbicacVt-unCK9yqsIVuSsMxdEKRE6N9MzV21D_qu4mijjE-upKm2KnqESEOzTybDC5ZPCF47CDRFgsBJ-4TSJcpNblhy_u5U7KdowIXAzWrdyesvU_mzPGE4fHnW8Y="
-YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
-
-# التحقق من صلاحية ملف الكوكيز
-def validate_and_fix_cookies(cookie_file):
-    if not os.path.exists(cookie_file):
-        return False
-    try:
-        with open(cookie_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        valid_lines = []
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                valid_lines.append(line)
-                continue
-            parts = line.split('\t')
-            if len(parts) >= 7:
-                valid_lines.append(line)
-            else:
-                print(f"⚠️ Removing invalid cookie line: {line[:80]}...")
-        if len(valid_lines) < len(lines):
-            with open(cookie_file, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(valid_lines) + '\n')
-            print(f"✅ Fixed cookies file: removed {len(lines) - len(valid_lines)} invalid lines")
-        return any(not l.startswith('#') and l.strip() for l in valid_lines)
-    except Exception as e:
-        print(f"❌ Cookie validation error: {e}")
-        return False
 
 # قاموس لتتبع حالة كل مستخدم (رابط الفيديو المختار)
 user_data = {}
