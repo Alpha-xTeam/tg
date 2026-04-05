@@ -338,8 +338,8 @@ def get_yt_formats(url):
             'no_warnings': True,
             'listformats': False,
             'socket_timeout': 30,
-            'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['tvhtml5_simple'], 'skip': ['all']}},
+            #'cookiefile': COOKIES_PATH, # Removed because it restricts formats on some videos
+            'extractor_args': {'youtube': {'player_client': ['android', 'web'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -401,8 +401,8 @@ def download_vd(url, format_id=None):
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
-            'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['tvhtml5_simple'], 'skip': ['all']}},
+            #'cookiefile': COOKIES_PATH,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -436,8 +436,8 @@ def download_mp3(url):
             'format': 'ba[asr=44100]/ba/b',
             'format_sort': ['+size', 'br', 'asr'],
             'socket_timeout': 60,
-            'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['tvhtml5_simple'], 'skip': ['all']}},
+            #'cookiefile': COOKIES_PATH,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
