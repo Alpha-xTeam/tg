@@ -339,7 +339,7 @@ def get_yt_formats(url):
             'listformats': False,
             'socket_timeout': 30,
             'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android']}},
+            'extractor_args': {'youtube': {'player_client': ['tvhtml5_simple'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -402,7 +402,7 @@ def download_vd(url, format_id=None):
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
             'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android']}},
+            'extractor_args': {'youtube': {'player_client': ['tvhtml5_simple'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -433,10 +433,11 @@ def download_mp3(url):
         import yt_dlp
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'ba[asr=44100]/ba/b',
+            'format_sort': ['+size', 'br', 'asr'],
             'socket_timeout': 60,
             'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android']}},
+            'extractor_args': {'youtube': {'player_client': ['tvhtml5_simple'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
