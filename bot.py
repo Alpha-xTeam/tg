@@ -44,6 +44,7 @@ OUTPUT = "/tmp/downloads"
 # جلب ملف الكوكيز من رابط خارجي وتخزينه
 COOKIES_FILE = "cookies.txt"
 INSTA_COOKIES_FILE = "cookies2.txt"
+COOKIES_PATH = os.path.join(os.path.dirname(__file__), COOKIES_FILE)
 
 def validate_and_fix_cookies(file_path):
     """تحقق من صلاحية ملف الكوكيز وإصلاح أي تنسيق مفقود"""
@@ -337,6 +338,7 @@ def get_yt_formats(url):
             'no_warnings': True,
             'listformats': False,
             'socket_timeout': 30,
+            'cookies': COOKIES_PATH,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -394,6 +396,7 @@ def download_vd(url, format_id=None):
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
+            'cookies': COOKIES_PATH,
         }
         #yt-dlp ما يحتاج برووكسي
         if format_id and format_id.startswith('ytdl_'):
@@ -422,6 +425,7 @@ def download_mp3(url):
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'format': 'bestaudio[ext=m4a]/bestaudio/best',
             'socket_timeout': 60,
+            'cookies': COOKIES_PATH,
         }
         #yt-dlp ما يحتاج برووكسي
         
@@ -827,6 +831,7 @@ def download_tiktok_photos(url):
                     'quiet': True,
                     'no_warnings': True,
                     'skip_unavailable_fragments': True,
+                    'cookies': COOKIES_PATH,
                     'http_headers': {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
                     }
