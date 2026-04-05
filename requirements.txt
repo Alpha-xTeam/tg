@@ -11,3 +11,4 @@ tiktok-dlpy
 gallery-dl
 pytubefix
 youtube-dl
+pysocks
