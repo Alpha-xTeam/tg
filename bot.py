@@ -16,8 +16,8 @@ load_dotenv()
 
 # إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
 # استخدم أداة youtube-po-token-generator للحصول على هذه القيم
-YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "Mnh2rX_7fhZWq3aRVJo3KvnAfjdNqJMKfqOMvbicacVt-unCK9yqsIVuSsMxdEKRE6N9MzV21D_qu4mijjE-upKm2KnqESEOzTybDC5ZPCF47CDRFgsBJ-4TSJcpNblhy_u5U7KdowIXAzWrdyesvU_mzPGE4fHnW8Y="
-YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
+YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "Mni5wI0IxsG32bn8CY8cxTRA5HtoogOQ_3jiH6ry3VLn2NvGNuROnaHuH0wUdzs5cLABwl5warXBa4GYCTxz1_HBzvG9Ah2smu_4kuqIhkLqB9RwrWgycbPDJA3a-MHmnzExXirqkNCS82GUfYXP6iPoSbLBjGgwGkU="
+YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtDcXlXdlZxWmxXcyi7pMrOBjIKCgJJURIEGgAgFQ%3D%3D"
 
 # استيراد مكتبة supabase للتعامل مع قاعدة البيانات
 try:
@@ -328,7 +328,12 @@ def get_yt_info_via_api(url):
 def get_yt_formats(url):
     try:
         # استخدام pytubefix مع PO Token لتحسين الثبات
-        yt = YouTube(url, use_po_token=True)
+        yt = YouTube(
+            url,
+            client='WEB',
+            po_token=YOUTUBE_PO_TOKEN,
+            visitor_data=YOUTUBE_VISITOR_DATA
+        )
         
         formats = []
         seen_resolutions = set()
@@ -385,7 +390,12 @@ def get_yt_formats(url):
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
 def download_vd(url, format_id=None):
     try:
-        yt = YouTube(url, use_po_token=True)
+        yt = YouTube(
+            url,
+            client='WEB',
+            po_token=YOUTUBE_PO_TOKEN,
+            visitor_data=YOUTUBE_VISITOR_DATA
+        )
         
         if format_id and format_id.startswith('pytube_'):
             # استخدام الجودة المحددة بواسطة المستخدم
@@ -412,7 +422,12 @@ def download_vd(url, format_id=None):
 # دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
 def download_mp3(url):
     try:
-        yt = YouTube(url, use_po_token=True)
+        yt = YouTube(
+            url,
+            client='WEB',
+            po_token=YOUTUBE_PO_TOKEN,
+            visitor_data=YOUTUBE_VISITOR_DATA
+        )
         
         # الحصول على أفضل جودة صوت متاحة
         stream = yt.streams.get_audio_only()
@@ -1689,7 +1704,8 @@ def search_youtube(query):
         search = Search(query)
         results = []
         
-        results.append({
+        for video in search.videos[:10]:
+            results.append({
                 'title': video.title,
                 'url': video.watch_url,
                 'id': video.video_id,
