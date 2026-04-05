@@ -16,8 +16,8 @@ load_dotenv()
 
 # إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
 # استخدم أداة youtube-po-token-generator للحصول على هذه القيم
-YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "Mni5wI0IxsG32bn8CY8cxTRA5HtoogOQ_3jiH6ry3VLn2NvGNuROnaHuH0wUdzs5cLABwl5warXBa4GYCTxz1_HBzvG9Ah2smu_4kuqIhkLqB9RwrWgycbPDJA3a-MHmnzExXirqkNCS82GUfYXP6iPoSbLBjGgwGkU="
-YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtDcXlXdlZxWmxXcyi7pMrOBjIKCgJJURIEGgAgFQ%3D%3D"
+YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "MnicIJL9UE_Ea5wc3Fq0U7chRKQg8T2Qbf64eUz9o4t1sAHYGe4CB2-LbZArC6aEYEkg2vbNWSF9B9ScCyYNjkXycz8VxbNq-vgNm04gmFbac4Xk5iHuiOIagBUuJWB7evNY1lyKJhZeFXr4VqZOEbA_z3XzWrcYhDA="
+YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtTVFJXQ2hMZFQyOCiLtsrOBjIKCgJJURIEGgAgNQ%3D%3D"
 
 # استيراد مكتبة supabase للتعامل مع قاعدة البيانات
 try:
@@ -328,11 +328,11 @@ def get_yt_info_via_api(url):
 def get_yt_formats(url):
     try:
         # استخدام pytubefix مع PO Token لتحسين الثبات
-        yt = YouTube(url)
-        
+        yt = YouTube(url, use_po_token=True)
+
         formats = []
         seen_resolutions = set()
-        
+
         # جلب جميع الجودات المتاحة التي تحتوي على صوت وصورة معاً (progressive)
         streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
         
@@ -385,8 +385,8 @@ def get_yt_formats(url):
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
 def download_vd(url, format_id=None):
     try:
-        yt = YouTube(url)
-        
+        yt = YouTube(url, use_po_token=True)
+
         if format_id and format_id.startswith('pytube_'):
             # استخدام الجودة المحددة بواسطة المستخدم
             itag = int(format_id.replace('pytube_', ''))
@@ -412,8 +412,8 @@ def download_vd(url, format_id=None):
 # دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
 def download_mp3(url):
     try:
-        yt = YouTube(url)
-        
+        yt = YouTube(url, use_po_token=True)
+
         # الحصول على أفضل جودة صوت متاحة
         stream = yt.streams.get_audio_only()
         if not stream:
@@ -1686,9 +1686,9 @@ def format_views(n):
 def search_youtube(query):
     try:
         from pytubefix import Search
-        search = Search(query)
+        search = Search(query, use_po_token=True)
         results = []
-        
+
         for video in search.videos[:10]:
             results.append({
                 'title': video.title,
