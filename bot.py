@@ -338,8 +338,8 @@ def get_yt_formats(url):
             'no_warnings': True,
             'listformats': False,
             'socket_timeout': 30,
-            'cookies': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}},
+            'cookiefile': COOKIES_PATH,
+            'extractor_args': {'youtube': {'player_client': ['mweb', 'web']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -401,8 +401,8 @@ def download_vd(url, format_id=None):
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
-            'cookies': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}},
+            'cookiefile': COOKIES_PATH,
+            'extractor_args': {'youtube': {'player_client': ['mweb', 'web']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -435,8 +435,8 @@ def download_mp3(url):
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'format': 'bestaudio[ext=m4a]/bestaudio/best',
             'socket_timeout': 60,
-            'cookies': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}},
+            'cookiefile': COOKIES_PATH,
+            'extractor_args': {'youtube': {'player_client': ['mweb', 'web']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Accept-Language': 'en-US,en;q=0.5',

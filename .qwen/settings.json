@@ -6,7 +6,12 @@
       "Bash(python *)",
       "Bash(ffmpeg *)",
       "WebSearch",
-      "Bash(py *)"
+      "Bash(py *)",
+      "Bash(\"c:\\users\\admin\\appdata\\local\\programs\\python\\python314\\python.exe\" *)",
+      "Bash(c:\\users\\admin\\appdata\\local\\programs\\python\\python314\\python.exe *)",
+      "Bash(tasklist *)",
+      "Bash(dir *)",
+      "Bash(timeout *)"
     ]
   },
   "$version": 3
