@@ -330,49 +330,53 @@ def get_yt_info_via_api(url):
 # دالة جلب معلومات اليوتيوب والجودات المتاحة باستخدام pytubefix فقط
 def get_yt_formats(url):
     try:
-        # استخدام TV client - ما يحتاج PoToken ويشتغل مع البرووكسي
-        yt = YouTube(url, client='TV', proxies=get_proxy_config())
-
-        formats = []
-        seen_resolutions = set()
-
-        # جلب جميع الجودات المتاحة التي تحتوي على صوت وصورة معاً (progressive)
-        streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
-        
-        for stream in streams:
-            res_key = f"{stream.resolution}_{stream.subtype}"
-            if res_key in seen_resolutions:
-                continue
-            seen_resolutions.add(res_key)
-            
-            formats.append({
-                'format_id': f"pytube_{stream.itag}",
-                'resolution': stream.resolution,
-                'ext': stream.subtype,
-                'filesize': stream.filesize or 0,
-                'actual_format_id': stream.itag,
-                'itag': stream.itag
-            })
-        
-        # إذا لم توجد جودات، نضيف الخيار الافتراضي الأفضل
-        if not formats:
-            formats.append({
-                'format_id': 'pytube_best',
-                'resolution': 'Best Available',
-                'ext': 'mp4',
-                'filesize': 0,
-                'actual_format_id': 'best'
-            })
-
-        return {
-            'title': yt.title,
-            'thumbnail': yt.thumbnail_url,
-            'formats': formats[:10],
-            'method': 'pytubefix'
+        # استخدام yt-dlp - يدعم البرووكسي بشكل أفضل
+        import yt_dlp
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'listformats': False,
+            'socket_timeout': 30,
         }
+        if PROXY:
+            ydl_opts['proxy'] = PROXY
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            formats = []
+            seen_resolutions = set()
+            
+            for fmt in info.get('formats', []):
+                if not fmt.get('vcodec') or not fmt.get('acodec'):
+                    continue
+                res = fmt.get('resolution', 'unknown')
+                if res in seen_resolutions:
+                    continue
+                seen_resolutions.add(res)
+                formats.append({
+                    'format_id': f"ytdl_{fmt.get('format_id', '')}",
+                    'resolution': res,
+                    'ext': fmt.get('ext', 'mp4'),
+                    'filesize': fmt.get('filesize', 0),
+                })
+            
+            if not formats:
+                formats.append({
+                    'format_id': 'best',
+                    'resolution': 'Best Available',
+                    'ext': 'mp4',
+                    'filesize': 0,
+                })
+            
+            return {
+                'title': info.get('title', 'YouTube Video'),
+                'thumbnail': info.get('thumbnail', ''),
+                'formats': formats[:10],
+                'method': 'yt-dlp'
+            }
     except Exception as e:
-        print(f"pytubefix info fetch failed: {e}")
-    
+        print(f"yt-dlp info fetch failed: {e}")
+
     # Fallback: Google API
     api_info = get_yt_info_via_api(url)
     if api_info:
@@ -385,56 +389,56 @@ def get_yt_formats(url):
 
     return None
 
-# دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
+# دالة تحميل من يوتيوب باستخدام الجودة المختارة (yt-dlp فقط)
 def download_vd(url, format_id=None):
     try:
-        yt = YouTube(url, client='TV', proxies=get_proxy_config())
-
-        if format_id and format_id.startswith('pytube_'):
-            # استخدام الجودة المحددة بواسطة المستخدم
-            itag = int(format_id.replace('pytube_', ''))
-            stream = yt.streams.get_by_itag(itag)
+        import yt_dlp
+        ydl_opts = {
+            'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
+            'socket_timeout': 60,
+        }
+        if PROXY:
+            ydl_opts['proxy'] = PROXY
+        if format_id and format_id.startswith('ytdl_'):
+            ydl_opts['format'] = format_id.replace('ytdl_', '')
         else:
-            # الحصول على أفضل جودة متاحة بشكل افتراضي
-            stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m44]/best[ext=mp4]/best'
         
-        if not stream:
-            return None, None
-            
-        file_path = stream.download(output_path=OUTPUT)
-        if os.path.exists(file_path):
-            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-            upload_to_supabase(file_path, safe_file_name)
-            return file_path, yt.title
-            
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info)
+            title = info.get('title', 'YouTube Video')
+            if os.path.exists(file_path):
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                upload_to_supabase(file_path, safe_file_name)
+                return file_path, title
     except Exception as e:
-        print(f"pytubefix download_vd Error: {e}")
+        print(f"yt-dlp download_vd Error: {e}")
 
     return None, None
 
-# دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
+# دالة تحميل الصوت فقط من يوتيوب باستخدام yt-dlp
 def download_mp3(url):
     try:
-        yt = YouTube(url, client='TV', proxies=get_proxy_config())
-
-        # الحصول على أفضل جودة صوت متاحة
-        stream = yt.streams.get_audio_only()
-        if not stream:
-            return None, None
-            
-        file_path = stream.download(output_path=OUTPUT)
-        # تغيير الامتداد إلى mp3
-        base, ext = os.path.splitext(file_path)
-        mp3_path = f"{base}.mp3"
-        os.rename(file_path, mp3_path)
-        file_path = mp3_path
-        if os.path.exists(file_path):
-            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-            upload_to_supabase(file_path, safe_file_name)
-            return file_path, yt.title
-            
+        import yt_dlp
+        ydl_opts = {
+            'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
+            'format': 'bestaudio[ext=m44]/bestaudio/best',
+            'socket_timeout': 60,
+        }
+        if PROXY:
+            ydl_opts['proxy'] = PROXY
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'YouTube Video')
+            file_path = ydl.prepare_filename(info)
+            if os.path.exists(file_path):
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                upload_to_supabase(file_path, safe_file_name)
+                return file_path, title
     except Exception as e:
-        print(f"pytubefix download_mp3 Error: {e}")
+        print(f"yt-dlp download_mp3 Error: {e}")
         return None, None
 
 
@@ -1685,27 +1689,25 @@ def format_views(n):
         return f"{n/1_000:.1f}K"
     return str(n)
 
-# دالة البحث في يوتيوب باستخدام pytubefix
+# دالة البحث في يوتيوب باستخدام Google API
 def search_youtube(query):
     try:
-        from pytubefix import Search
-        # استخدام TV client - ما يحتاج PoToken
-        search = Search(query, client='TV', proxies=get_proxy_config())
+        import requests
+        search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&q={requests.utils.quote(query)}&type=video&maxResults=10&key={YOUTUBE_API_KEY}"
+        response = requests.get(search_url, timeout=10)
+        data = response.json()
         results = []
-
-        for video in search.videos[:10]:
+        
+        for item in data.get('items', []):
             results.append({
-                'title': video.title,
-                'url': video.watch_url,
-                'id': video.video_id,
-                'duration': video.length,
-                'uploader': video.author,
-                'view_count': video.views,
-                'thumbnail': video.thumbnail_url
+                'title': item['snippet']['title'],
+                'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}",
+                'id': item['id']['videoId'],
+                'thumbnail': item['snippet']['thumbnails']['high']['url'],
             })
         return results
     except Exception as e:
-        print(f"YouTube Search Error: {e}")
+        print(f"YouTube API Search Error: {e}")
         return []
 
 # استيراد مكتبة requests للبحث عن الصور
