@@ -1682,40 +1682,23 @@ def format_views(n):
         return f"{n/1_000:.1f}K"
     return str(n)
 
-# دالة البحث في يوتيوب (باستخدام تقنية مستوحاة من youtube-downloader-api)
+# دالة البحث في يوتيوب باستخدام pytubefix
 def search_youtube(query):
     try:
-        ydl_opts = YTDL_COMMON_PARAMS.copy()
-        ydl_opts.update({
-            'extract_flat': True,
-            'default_search': 'ytsearch10',
-            'nocheckcertificate': True,
-            # استخدام عدة عملاء لضمان جلب النتائج بدون حظر
-            'extractor_args': {'youtube': {'player_client': ['web', 'android', 'ios', 'tv']}},
-        })
+        from pytubefix import Search
+        search = Search(query)
+        results = []
         
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
-            
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # استخدام تقنية ytsearch لجلب النتائج
-            info = ydl.extract_info(f"ytsearch10:{query}", download=False)
-            results = []
-            if 'entries' in info:
-                for entry in info['entries']:
-                    if not entry: continue
-                    # نفلتر النتائج لنأخذ الفيديوهات فقط ونستبعد القنوات أو القوائم
-                    if entry.get('ie_key') == 'Youtube' or '/watch?v=' in entry.get('url', ''):
-                        results.append({
-                            'title': entry.get('title'),
-                            'url': entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}",
-                            'id': entry.get('id'),
-                            'duration': entry.get('duration'),
-                            'uploader': entry.get('uploader', 'Unknown'),
-                            'view_count': entry.get('view_count', 0),
-                            'thumbnail': entry.get('thumbnail') or f"https://i.ytimg.com/vi/{entry.get('id')}/hqdefault.jpg"
-                        })
-            return results
+            results.append({
+                'title': video.title,
+                'url': video.watch_url,
+                'id': video.video_id,
+                'duration': video.length,
+                'uploader': video.author,
+                'view_count': video.views,
+                'thumbnail': video.thumbnail_url
+            })
+        return results
     except Exception as e:
         print(f"YouTube Search Error: {e}")
         return []
