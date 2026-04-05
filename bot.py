@@ -328,12 +328,7 @@ def get_yt_info_via_api(url):
 def get_yt_formats(url):
     try:
         # استخدام pytubefix مع PO Token لتحسين الثبات
-        yt = YouTube(
-            url,
-            client='WEB',
-            po_token=YOUTUBE_PO_TOKEN,
-            visitor_data=YOUTUBE_VISITOR_DATA
-        )
+        yt = YouTube(url)
         
         formats = []
         seen_resolutions = set()
@@ -390,12 +385,7 @@ def get_yt_formats(url):
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
 def download_vd(url, format_id=None):
     try:
-        yt = YouTube(
-            url,
-            client='WEB',
-            po_token=YOUTUBE_PO_TOKEN,
-            visitor_data=YOUTUBE_VISITOR_DATA
-        )
+        yt = YouTube(url)
         
         if format_id and format_id.startswith('pytube_'):
             # استخدام الجودة المحددة بواسطة المستخدم
@@ -422,12 +412,7 @@ def download_vd(url, format_id=None):
 # دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
 def download_mp3(url):
     try:
-        yt = YouTube(
-            url,
-            client='WEB',
-            po_token=YOUTUBE_PO_TOKEN,
-            visitor_data=YOUTUBE_VISITOR_DATA
-        )
+        yt = YouTube(url)
         
         # الحصول على أفضل جودة صوت متاحة
         stream = yt.streams.get_audio_only()
