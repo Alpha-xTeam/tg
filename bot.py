@@ -330,7 +330,7 @@ def get_yt_info_via_api(url):
 # دالة جلب معلومات اليوتيوب والجودات المتاحة باستخدام pytubefix فقط
 def get_yt_formats(url):
     try:
-        # استخدام yt-dlp - يدعم البرووكسي بشكل أفضل
+        # yt-dlp بدون برووكسي - ما يحتاجه
         import yt_dlp
         ydl_opts = {
             'quiet': True,
@@ -338,8 +338,6 @@ def get_yt_formats(url):
             'listformats': False,
             'socket_timeout': 30,
         }
-        if PROXY:
-            ydl_opts['proxy'] = PROXY
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -397,12 +395,11 @@ def download_vd(url, format_id=None):
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
         }
-        if PROXY:
-            ydl_opts['proxy'] = PROXY
+        #yt-dlp ما يحتاج برووكسي
         if format_id and format_id.startswith('ytdl_'):
             ydl_opts['format'] = format_id.replace('ytdl_', '')
         else:
-            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m44]/best[ext=mp4]/best'
+            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -423,11 +420,10 @@ def download_mp3(url):
         import yt_dlp
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
-            'format': 'bestaudio[ext=m44]/bestaudio/best',
+            'format': 'bestaudio[ext=m4a]/bestaudio/best',
             'socket_timeout': 60,
         }
-        if PROXY:
-            ydl_opts['proxy'] = PROXY
+        #yt-dlp ما يحتاج برووكسي
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -1699,10 +1695,13 @@ def search_youtube(query):
         results = []
         
         for item in data.get('items', []):
+            video_id = item.get('id', {}).get('videoId')
+            if not video_id:
+                continue
             results.append({
                 'title': item['snippet']['title'],
-                'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}",
-                'id': item['id']['videoId'],
+                'url': f"https://www.youtube.com/watch?v={video_id}",
+                'id': video_id,
                 'thumbnail': item['snippet']['thumbnails']['high']['url'],
             })
         return results
