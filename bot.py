@@ -16,8 +16,20 @@ load_dotenv()
 
 # إعدادات الـ PO Token (لتجاوز حماية يوتيوب الجديدة)
 # استخدم أداة youtube-po-token-generator للحصول على هذه القيم
+# https://github.com/YunzheZJU/youtube-po-token-generator
 YOUTUBE_PO_TOKEN = os.environ.get("YOUTUBE_PO_TOKEN") or "MnicIJL9UE_Ea5wc3Fq0U7chRKQg8T2Qbf64eUz9o4t1sAHYGe4CB2-LbZArC6aEYEkg2vbNWSF9B9ScCyYNjkXycz8VxbNq-vgNm04gmFbac4Xk5iHuiOIagBUuJWB7evNY1lyKJhZeFXr4VqZOEbA_z3XzWrcYhDA="
 YOUTUBE_VISITOR_DATA = os.environ.get("YOUTUBE_VISITOR_DATA") or "CgtTVFJXQ2hMZFQyOCiLtsrOBjIKCgJJURIEGgAgNQ%3D%3D"
+
+def po_token_verifier():
+    """
+    دالة التحقق من PO Token لتجاوز حماية يوتيوب
+    استخدم الأداة: https://github.com/YunzheZJU/youtube-po-token-generator
+    للحصول على visitorData و PO Token
+    """
+    return {
+        'visitor_data': YOUTUBE_VISITOR_DATA,
+        'po_token': YOUTUBE_PO_TOKEN
+    }
 
 # استيراد مكتبة supabase للتعامل مع قاعدة البيانات
 try:
@@ -328,7 +340,7 @@ def get_yt_info_via_api(url):
 def get_yt_formats(url):
     try:
         # استخدام pytubefix مع PO Token لتحسين الثبات
-        yt = YouTube(url, use_po_token=True)
+        yt = YouTube(url, po_token_verifier=po_token_verifier)
 
         formats = []
         seen_resolutions = set()
@@ -385,7 +397,7 @@ def get_yt_formats(url):
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
 def download_vd(url, format_id=None):
     try:
-        yt = YouTube(url, use_po_token=True)
+        yt = YouTube(url, po_token_verifier=po_token_verifier)
 
         if format_id and format_id.startswith('pytube_'):
             # استخدام الجودة المحددة بواسطة المستخدم
@@ -412,7 +424,7 @@ def download_vd(url, format_id=None):
 # دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
 def download_mp3(url):
     try:
-        yt = YouTube(url, use_po_token=True)
+        yt = YouTube(url, po_token_verifier=po_token_verifier)
 
         # الحصول على أفضل جودة صوت متاحة
         stream = yt.streams.get_audio_only()
@@ -1686,7 +1698,12 @@ def format_views(n):
 def search_youtube(query):
     try:
         from pytubefix import Search
-        search = Search(query, use_po_token=True)
+        # Try with po_token_verifier, fallback to without it if not supported
+        try:
+            search = Search(query, po_token_verifier=po_token_verifier)
+        except TypeError:
+            # Older version doesn't support po_token_verifier
+            search = Search(query)
         results = []
 
         for video in search.videos[:10]:
