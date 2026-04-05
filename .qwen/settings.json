@@ -5,7 +5,8 @@
       "Bash(pip install *)",
       "Bash(python *)",
       "Bash(ffmpeg *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(py *)"
     ]
   },
   "$version": 3
