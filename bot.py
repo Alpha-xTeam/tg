@@ -1689,7 +1689,7 @@ def search_youtube(query):
         search = Search(query)
         results = []
         
-            results.append({
+        results.append({
                 'title': video.title,
                 'url': video.watch_url,
                 'id': video.video_id,
