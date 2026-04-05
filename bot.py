@@ -35,55 +35,12 @@ except ImportError:
     def create_client(url, key):
         return Client(url, key)
 
-# استيراد مكتبة yt-dlp لتحميل الفيديوهات
-import yt_dlp
-import requests
-
-# استيراد youtube-dl كبديل
-try:
-    import youtube_dl as yt_dl
-except ImportError:
-    yt_dl = None
-
-# استيراد pytubefix كبديل للتنزيل من يوتيوب
+# استيراد pytubefix كطريقة وحيدة للتنزيل من يوتيوب
 try:
     from pytubefix import YouTube
 except ImportError:
-    YouTube = None
-
-# إعدادات yt-dlp المتقدمة (مستوحاة من youtube-downloader-api)
-YTDL_COMMON_PARAMS = {
-    'quiet': True,
-    'no_warnings': True,
-    'format': 'best',
-    'age_limit': 99,  # السماح بالمحتوى المقيد بالعمر
-    'cookiefile': 'cookies.txt', # إضافة ملف الكوكيز لمحاكاة التصفح الحقيقي
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'Referer': 'https://www.youtube.com/',
-        'DNT': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Upgrade-Insecure-Requests': '1',
-    }
-}
-
-# إضافة extractor_args إذا كان PO_TOKEN مخصص
-default_po_token = "Mnh2rX_7fhZWq3aRVJo3KvnAfjdNqJMKfqOMvbicacVt-unCK9yqsIVuSsMxdEKRE6N9MzV21D_qu4mijjE-upKm2KnqESEOzTybDC5ZPCF47CDRFgsBJ-4TSJcpNblhy_u5U7KdowIXAzWrdyesvU_mzPGE4fHnW8Y="
-default_visitor_data = "CgtFU2xQV3dicDI3MCikiL7OBjIKCgJJURIEGgAgXg%3D%3D"
-
-if YOUTUBE_PO_TOKEN != default_po_token or YOUTUBE_VISITOR_DATA != default_visitor_data:
-    YTDL_COMMON_PARAMS['extractor_args'] = {
-        'youtube': {
-            'player_client': ['web', 'ios', 'android', 'tv'],
-            'po_token': YOUTUBE_PO_TOKEN,
-            'visitor_data': YOUTUBE_VISITOR_DATA
-        }
-    }
+    print("❌ خطأ: pytubefix غير مثبت! يرجى تثبيته باستخدام: pip install pytubefix")
+    exit(1)
 
 # مجلد حفظ الملفات المحملة
 # نستخدم /tmp لدعم الاستضافات التي تملك نظام ملفات للقراءة فقط
@@ -367,100 +324,52 @@ def get_yt_info_via_api(url):
         pass
     return None
 
-# دالة جلب معلومات اليوتيوب والجودات المتاحة
+# دالة جلب معلومات اليوتيوب والجودات المتاحة باستخدام pytubefix فقط
 def get_yt_formats(url):
-    # الطريقة الأولى: yt-dlp (الأكثر استقراراً وتحديثاً)
     try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'extract_flat': False,
-            'skip_download': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['ios', 'web'],
-                    'po_token': YOUTUBE_PO_TOKEN,
-                    'visitor_data': YOUTUBE_VISITOR_DATA
-                }
-            },
+        # استخدام pytubefix مع PO Token لتحسين الثبات
+        yt = YouTube(url, use_po_token=True)
+        
+        formats = []
+        seen_resolutions = set()
+        
+        # جلب جميع الجودات المتاحة التي تحتوي على صوت وصورة معاً (progressive)
+        streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
+        
+        for stream in streams:
+            res_key = f"{stream.resolution}_{stream.subtype}"
+            if res_key in seen_resolutions:
+                continue
+            seen_resolutions.add(res_key)
+            
+            formats.append({
+                'format_id': f"pytube_{stream.itag}",
+                'resolution': stream.resolution,
+                'ext': stream.subtype,
+                'filesize': stream.filesize or 0,
+                'actual_format_id': stream.itag,
+                'itag': stream.itag
+            })
+        
+        # إذا لم توجد جودات، نضيف الخيار الافتراضي الأفضل
+        if not formats:
+            formats.append({
+                'format_id': 'pytube_best',
+                'resolution': 'Best Available',
+                'ext': 'mp4',
+                'filesize': 0,
+                'actual_format_id': 'best'
+            })
+
+        return {
+            'title': yt.title,
+            'thumbnail': yt.thumbnail_url,
+            'formats': formats[:10],
+            'method': 'pytubefix'
         }
-
-        # إضافة الكوكيز إن وجدت
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
-
-        # إضافة البروكسي إن وجد
-        if PROXY:
-            ydl_opts['proxy'] = PROXY
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                return None
-
-            formats = []
-            seen_resolutions = set()
-
-            # جلب الفيديوهات progressive (صوت + صورة)
-            for f in info.get('formats', []):
-                if not f.get('vcodec') or not f.get('acodec') or f.get('acodec') == 'none':
-                    continue
-
-                resolution = f.get('resolution') or f"{f.get('height', '?')}p"
-                ext = f.get('ext', 'mp4')
-                filesize = f.get('filesize', 0) or 0
-
-                # تجنب التكرار
-                res_key = f"{resolution}_{ext}"
-                if res_key in seen_resolutions:
-                    continue
-                seen_resolutions.add(res_key)
-
-                formats.append({
-                    'format_id': f"ydl_{f['format_id']}",
-                    'resolution': resolution,
-                    'ext': ext,
-                    'filesize': filesize,
-                    'actual_format_id': f['format_id']
-                })
-
-            # إذا لم توجد progressive، نستخدم best video + best audio merge
-            if not formats:
-                formats.append({
-                    'format_id': 'ydl_best',
-                    'resolution': 'Best Available',
-                    'ext': 'mp4',
-                    'filesize': 0,
-                    'actual_format_id': 'bv*+ba/b'
-                })
-
-            return {
-                'title': info.get('title', 'Video'),
-                'thumbnail': info.get('thumbnail'),
-                'formats': formats[:10],  # حد أقصى 10 جودات
-                'method': 'yt-dlp'
-            }
     except Exception as e:
-        print(f"yt-dlp info fetch failed: {e}")
-
-
-
-    # محاولة باستخدام pytubefix كبديل
-    if YouTube:
-        try:
-            import time
-            time.sleep(5)  # انتظار لتجنب rate limiting
-            yt = YouTube(url, client='WEB')
-            return {
-                'title': yt.title,
-                'thumbnail': yt.thumbnail_url,
-                'formats': [{'format_id': 'pytube', 'resolution': 'High Quality', 'ext': 'mp4', 'filesize': 0}],
-                'method': 'pytube'
-            }
-        except Exception as e:
-            print(f"pytubefix info fetch failed: {e}")
-
+        print(f"pytubefix info fetch failed: {e}")
+    
     # Fallback: Google API
     api_info = get_yt_info_via_api(url)
     if api_info:
@@ -473,155 +382,56 @@ def get_yt_formats(url):
 
     return None
 
-# دالة تحميل من يوتيوب باستخدام الجودة المختارة
+# دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
 def download_vd(url, format_id=None):
     try:
-        ydl_opts = YTDL_COMMON_PARAMS.copy()
-        ydl_opts.update({
-            'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
-            'quiet': True,
-            'no_warnings': True,
-        })
-
-        if PROXY:
-            ydl_opts['proxy'] = PROXY
-
-        # تحديد الجودة المطلوبة
-        if format_id:
-            if format_id.startswith('ydl_'):
-                # استخدام format_id الحقيقي من yt-dlp
-                actual_id = format_id.replace('ydl_', '')
-                if actual_id in ('bv*+ba/b', 'best'):
-                    ydl_opts['format'] = 'bv*+ba/b'
-                else:
-                    ydl_opts['format'] = actual_id
-            else:
-                # fallback: صيغة قديمة
-                ydl_opts['format'] = format_id
+        yt = YouTube(url, use_po_token=True)
+        
+        if format_id and format_id.startswith('pytube_'):
+            # استخدام الجودة المحددة بواسطة المستخدم
+            itag = int(format_id.replace('pytube_', ''))
+            stream = yt.streams.get_by_itag(itag)
         else:
-            ydl_opts['format'] = 'bv*+ba/b'
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if not info:
-                return None, None
-
-            file_path = ydl.prepare_filename(info)
-            # التعامل مع الملفات التي قد تغير امتدادها
-            if not os.path.exists(file_path):
-                base, _ = os.path.splitext(file_path)
-                for ext in ['.mp4', '.mkv', '.webm', '.flv']:
-                    if os.path.exists(base + ext):
-                        file_path = base + ext
-                        break
-
-            if os.path.exists(file_path):
-                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                upload_to_supabase(file_path, safe_file_name)
-                return file_path, info.get('title', 'Video')
-
+            # الحصول على أفضل جودة متاحة بشكل افتراضي
+            stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+        
+        if not stream:
+            return None, None
+            
+        file_path = stream.download(output_path=OUTPUT)
+        if os.path.exists(file_path):
+            safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+            upload_to_supabase(file_path, safe_file_name)
+            return file_path, yt.title
+            
     except Exception as e:
-        print(f"download_vd Error: {e}")
-
-
-
-    # محاولة باستخدام pytubefix كبديل
-    if YouTube:
-        try:
-            yt = YouTube(url, client='WEB')
-            stream = yt.streams.filter(progressive=True).order_by('resolution').desc().first()
-            if not stream:
-                return None, None
-            file_path = stream.download(output_path=OUTPUT)
-            if os.path.exists(file_path):
-                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                upload_to_supabase(file_path, safe_file_name)
-                return file_path, yt.title
-        except Exception as e:
-            print(f"pytubefix download_vd Error: {e}")
-
-    # محاولة باستخدام gallery-dl كبديل أخير
-    try:
-        import subprocess
-        result = subprocess.run(['gallery-dl', '--dest', OUTPUT, url], capture_output=True, text=True, timeout=120)
-        if result.returncode == 0:
-            # البحث عن الملف المحمل
-            for root, dirs, files in os.walk(OUTPUT):
-                for file in files:
-                    if file.endswith(('.mp4', '.webm', '.mkv', '.flv')):
-                        file_path = os.path.join(root, file)
-                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                        upload_to_supabase(file_path, safe_file_name)
-                        return file_path, 'Video'
-        else:
-            print(f"gallery-dl failed: {result.stderr}")
-    except Exception as e:
-        print(f"gallery-dl download_vd Error: {e}")
+        print(f"pytubefix download_vd Error: {e}")
 
     return None, None
 
-# دالة تحميل الصوت فقط من يوتيوب
+# دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
 def download_mp3(url):
     try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'format': 'bestaudio',
-            'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['ios', 'web'],
-                    'po_token': YOUTUBE_PO_TOKEN,
-                    'visitor_data': YOUTUBE_VISITOR_DATA
-                }
-            },
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-        }
-
-        if PROXY:
-            ydl_opts['proxy'] = PROXY
-
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if not info:
-                return None, None
-
-            # yt-dlp مع FFmpegExtractAudio يحول الملف إلى mp3
-            # اسم الملف قد يتغير بعد التحويل
-            safe_title = re.sub(r'[\\/*?:"<>|]', "_", info.get('title', 'Audio'))
-            expected_path = os.path.join(OUTPUT, f"{safe_title}.mp3")
-
-            # البحث عن الملف الفعلي (yt-dlp قد يستخدم اسم مختلف قليلاً)
-            if os.path.exists(expected_path):
-                file_path = expected_path
-            else:
-                # البحث عن أي ملف mp3 في المجلد
-                for f in os.listdir(OUTPUT):
-                    if f.endswith('.mp3') and safe_title.split('_')[0] in f:
-                        file_path = os.path.join(OUTPUT, f)
-                        break
-                else:
-                    # fallback: استخدام prepare_filename
-                    file_path = ydl.prepare_filename(info)
-                    base, _ = os.path.splitext(file_path)
-                    file_path = base + '.mp3'
-                    if not os.path.exists(file_path):
-                        return None, None
-
+        yt = YouTube(url, use_po_token=True)
+        
+        # الحصول على أفضل جودة صوت متاحة
+        stream = yt.streams.get_audio_only()
+        if not stream:
+            return None, None
+            
+        file_path = stream.download(output_path=OUTPUT)
+        # تغيير الامتداد إلى mp3
+        base, ext = os.path.splitext(file_path)
+        mp3_path = f"{base}.mp3"
+        os.rename(file_path, mp3_path)
+        file_path = mp3_path
+        if os.path.exists(file_path):
             safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
             upload_to_supabase(file_path, safe_file_name)
-            return file_path, info.get('title', 'Audio')
-
+            return file_path, yt.title
+            
     except Exception as e:
-        print(f"download_mp3 Error: {e}")
+        print(f"pytubefix download_mp3 Error: {e}")
         return None, None
 
 
