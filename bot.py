@@ -330,8 +330,8 @@ def get_yt_info_via_api(url):
 # دالة جلب معلومات اليوتيوب والجودات المتاحة باستخدام pytubefix فقط
 def get_yt_formats(url):
     try:
-        # استخدام pytubefix مع WEB client للتجاوز الحماية تلقائياً
-        yt = YouTube(url, client='WEB', proxies=get_proxy_config())
+        # استخدام TV client - ما يحتاج PoToken ويشتغل مع البرووكسي
+        yt = YouTube(url, client='TV', proxies=get_proxy_config())
 
         formats = []
         seen_resolutions = set()
@@ -388,7 +388,7 @@ def get_yt_formats(url):
 # دالة تحميل من يوتيوب باستخدام الجودة المختارة (pytubefix فقط)
 def download_vd(url, format_id=None):
     try:
-        yt = YouTube(url, client='WEB', proxies=get_proxy_config())
+        yt = YouTube(url, client='TV', proxies=get_proxy_config())
 
         if format_id and format_id.startswith('pytube_'):
             # استخدام الجودة المحددة بواسطة المستخدم
@@ -415,7 +415,7 @@ def download_vd(url, format_id=None):
 # دالة تحميل الصوت فقط من يوتيوب باستخدام pytubefix
 def download_mp3(url):
     try:
-        yt = YouTube(url, client='WEB', proxies=get_proxy_config())
+        yt = YouTube(url, client='TV', proxies=get_proxy_config())
 
         # الحصول على أفضل جودة صوت متاحة
         stream = yt.streams.get_audio_only()
@@ -1689,8 +1689,8 @@ def format_views(n):
 def search_youtube(query):
     try:
         from pytubefix import Search
-        # استخدام WEB client للتجاوز الحماية تلقائياً
-        search = Search(query, client='WEB', proxies=get_proxy_config())
+        # استخدام TV client - ما يحتاج PoToken
+        search = Search(query, client='TV', proxies=get_proxy_config())
         results = []
 
         for video in search.videos[:10]:
