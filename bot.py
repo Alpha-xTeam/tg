@@ -4,11 +4,17 @@ import telebot
 # استيراد مكتبة os للتعامل مع الملفات والمجلدات
 import os
 
+# استيراد مكتبة requests للطلبات الخارجية
+import requests
+
 # استيراد مكتبة re لمعالجة النصوص (Regex)
 import re
 
 # استيراد مكتبة json للتعامل مع ملفات الإعدادات
 import json
+
+# استيراد مكتبة yt_dlp للتحميل من يوتيوب ومنصات التواصل الاجتماعي
+import yt_dlp
 
 # استيراد مكتبة dotenv لتحميل المتغيرات البيئية
 from dotenv import load_dotenv
