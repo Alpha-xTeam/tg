@@ -30,13 +30,6 @@ except ImportError:
     def create_client(url, key):
         return Client(url, key)
 
-# استيراد pytubefix كطريقة وحيدة للتنزيل من يوتيوب
-try:
-    from pytubefix import YouTube
-except ImportError:
-    print("❌ خطأ: pytubefix غير مثبت! يرجى تثبيته باستخدام: pip install pytubefix")
-    exit(1)
-
 # مجلد حفظ الملفات المحملة
 # نستخدم /tmp لدعم الاستضافات التي تملك نظام ملفات للقراءة فقط
 OUTPUT = "/tmp/downloads"
@@ -298,6 +291,49 @@ user_data = {}
 # تتبع حالة الاشتراك (لتجنب تكرار إرسال رسالة للمطور)
 user_subscription_notified = set()
 
+# دالة البحث في يوتيوب وتحميل الصوت باستخدام yt-dlp (مثل Music_bot)
+def search_and_download_yt_audio(song_name):
+    try:
+        import yt_dlp
+        # اسم الملف الآمن
+        outtmpl = f"{OUTPUT}/%(title)s.%(ext)s"
+        
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': outtmpl,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+            'no_warnings': True,
+            'default_search': 'ytsearch1',
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # البحث عن أول نتيجة وتحميلها
+            info = ydl.extract_info(f"ytsearch1:{song_name}", download=True)
+            if 'entries' in info:
+                # إذا كانت العملية بحث، النتيجة تكون في entries
+                video_info = info['entries'][0]
+            else:
+                video_info = info
+                
+            file_path = ydl.prepare_filename(video_info)
+            # بما أننا استخدمنا FFmpeg لإخراج mp3، نحتاج لتصحيح الامتداد في المسار
+            file_path = os.path.splitext(file_path)[0] + ".mp3"
+            
+            title = video_info.get('title', 'YouTube Audio')
+            
+            if os.path.exists(file_path):
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                upload_to_supabase(file_path, safe_file_name)
+                return file_path, title
+    except Exception as e:
+        print(f"Error in search_and_download_yt_audio: {e}")
+    return None, None
+
 # دالة جلب معلومات اليوتيوب باستخدام Google API كخيار أول
 def get_yt_info_via_api(url):
     try:
@@ -328,7 +364,7 @@ def get_yt_info_via_api(url):
         pass
     return None
 
-# دالة جلب معلومات اليوتيوب والجودات المتاحة باستخدام pytubefix فقط
+# دالة جلب معلومات اليوتيوب والجودات المتاحة باستخدام yt-dlp
 def get_yt_formats(url):
     try:
         # yt-dlp بدون برووكسي - ما يحتاجه
