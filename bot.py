@@ -18,7 +18,14 @@ import yt_dlp
 
 # استيراد مكتبة dotenv لتحميل المتغيرات البيئية
 from dotenv import load_dotenv
-load_dotenv()
+import os
+
+# تحديد مسار ملف .env بشكل صريح لضمان تحميله في كل البيئات
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    load_dotenv() # Fallback لتعريفات النظام
 
 # استيراد مكتبة supabase للتعامل مع قاعدة البيانات
 try:
@@ -44,6 +51,96 @@ OUTPUT = "/tmp/downloads"
 COOKIES_FILE = "cookies.txt"
 INSTA_COOKIES_FILE = "cookies2.txt"
 COOKIES_PATH = os.path.join(os.path.dirname(__file__), COOKIES_FILE)
+INSTA_COOKIES_PATH = os.path.join(os.path.dirname(__file__), INSTA_COOKIES_FILE)
+
+YOUTUBE_COOKIES_URL = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies.txt"
+INSTA_COOKIES_URL = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies2.txt"
+
+
+def refresh_cookie_file_from_supabase(source_url, target_path, label):
+    try:
+        import requests
+        response = requests.get(source_url, timeout=10)
+        if response.status_code == 200 and response.content:
+            with open(target_path, "wb") as f:
+                f.write(response.content)
+            if validate_and_fix_cookies(target_path):
+                print(f"✅ {label} cookies refreshed.")
+                return True
+            print(f"⚠️ {label} cookies downloaded but invalid.")
+        else:
+            print(f"⚠️ {label} cookies request failed: {response.status_code}")
+    except Exception as e:
+        print(f"❌ Error downloading {label} cookies: {e}")
+    return False
+
+
+def refresh_youtube_cookiefile():
+    if refresh_cookie_file_from_supabase(YOUTUBE_COOKIES_URL, COOKIES_PATH, "YouTube"):
+        return COOKIES_PATH
+    if os.path.exists(COOKIES_PATH) and validate_and_fix_cookies(COOKIES_PATH):
+        return COOKIES_PATH
+    if os.path.exists(COOKIES_FILE) and validate_and_fix_cookies(COOKIES_FILE):
+        return COOKIES_FILE
+    return None
+
+
+def get_youtube_cookiefile():
+    if os.path.exists(COOKIES_PATH) and validate_and_fix_cookies(COOKIES_PATH):
+        return COOKIES_PATH
+    if os.path.exists(COOKIES_FILE) and validate_and_fix_cookies(COOKIES_FILE):
+        return COOKIES_FILE
+    return refresh_youtube_cookiefile()
+
+
+def extract_youtube_video_id(url):
+    patterns = [
+        r"v=([a-zA-Z0-9_-]+)",
+        r"youtu\.be/([a-zA-Z0-9_-]+)",
+        r"shorts/([a-zA-Z0-9_-]+)",
+        r"embed/([a-zA-Z0-9_-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def build_youtube_thumbnail(video_id):
+    if not video_id:
+        return ""
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
+def resolve_downloaded_file(expected_path):
+    if expected_path and os.path.exists(expected_path):
+        return expected_path
+
+    if not expected_path:
+        return None
+
+    base_dir = os.path.dirname(expected_path)
+    base_name = os.path.splitext(os.path.basename(expected_path))[0]
+    common_extensions = [".mp4", ".mkv", ".webm", ".mov", ".m4a", ".mp3", ".aac", ".flv", ".opus", ".ogg"]
+    candidates = []
+
+    for extension in common_extensions:
+        candidate_path = os.path.join(base_dir, base_name + extension)
+        if os.path.exists(candidate_path):
+            candidates.append(candidate_path)
+
+    if not candidates and os.path.isdir(base_dir):
+        for filename in os.listdir(base_dir):
+            if filename.startswith(base_name) and not filename.endswith(".part"):
+                candidate_path = os.path.join(base_dir, filename)
+                if os.path.isfile(candidate_path):
+                    candidates.append(candidate_path)
+
+    if candidates:
+        return max(candidates, key=os.path.getmtime)
+
+    return expected_path
 
 def validate_and_fix_cookies(file_path):
     """تحقق من صلاحية ملف الكوكيز وإصلاح أي تنسيق مفقود"""
@@ -68,38 +165,25 @@ def validate_and_fix_cookies(file_path):
 
 def update_cookies_from_url():
     # تحديث كوكيز يوتيوب
-    if os.path.exists(COOKIES_FILE):
-        if validate_and_fix_cookies(COOKIES_FILE):
+    if refresh_cookie_file_from_supabase(YOUTUBE_COOKIES_URL, COOKIES_PATH, "YouTube"):
+        print(f"✅ YouTube cookies validated.")
+    elif os.path.exists(COOKIES_PATH):
+        if validate_and_fix_cookies(COOKIES_PATH):
             print(f"✅ YouTube cookies validated.")
         else:
             print(f"⚠️ YouTube cookies invalid.")
     
     # تحديث كوكيز انستا (cookies2.txt)
-    if os.path.exists(INSTA_COOKIES_FILE):
-        if validate_and_fix_cookies(INSTA_COOKIES_FILE):
+    if refresh_cookie_file_from_supabase(INSTA_COOKIES_URL, INSTA_COOKIES_PATH, "Instagram"):
+        print(f"✅ Instagram cookies validated.")
+    elif os.path.exists(INSTA_COOKIES_PATH):
+        if validate_and_fix_cookies(INSTA_COOKIES_PATH):
             print(f"✅ Instagram cookies validated.")
     
-    yt_url = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies.txt"
-    insta_url = "https://dkdxufqgmhigfhnkisdt.supabase.co/storage/v1/object/public/downloads/cookies2.txt"
-    
     try:
-        import requests
-        # تحميل كوكيز يوتيوب
-        res1 = requests.get(yt_url, timeout=10)
-        if res1.status_code == 200:
-            with open(COOKIES_FILE, "wb") as f:
-                f.write(res1.content)
-            validate_and_fix_cookies(COOKIES_FILE)
-            
-        # تحميل كوكيز انستا
-        res2 = requests.get(insta_url, timeout=10)
-        if res2.status_code == 200:
-            with open(INSTA_COOKIES_FILE, "wb") as f:
-                f.write(res2.content)
-            validate_and_fix_cookies(INSTA_COOKIES_FILE)
+        if os.path.exists(COOKIES_PATH) and os.path.exists(INSTA_COOKIES_PATH):
             print(f"✅ All cookies updated from Supabase.")
             return True
-            
     except Exception as e:
         print(f"❌ Error downloading cookies: {e}")
     return False
@@ -279,18 +363,6 @@ apihelper.READ_TIMEOUT = 120
 # إنشاء مجلد التحميل إذا لم يكن موجودًا
 os.makedirs(OUTPUT, exist_ok=True)
 
-# إعدادات البروكسي لتجاوز حظر يوتيوب (اختياري)
-PROXY = os.environ.get("PROXY_URL")
-
-def get_proxy_config():
-    """إرجاع إعدادات البرووكسي إذا كانت موجودة"""
-    if PROXY:
-        return {
-            'http': PROXY,
-            'https': PROXY
-        }
-    return None
-
 # قاموس لتتبع حالة كل مستخدم (رابط الفيديو المختار)
 user_data = {}
 
@@ -363,7 +435,7 @@ def get_yt_info_via_api(url):
             item = data["items"][0]
             return {
                 "title": item["snippet"]["title"],
-                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"],
+                "thumbnail": item["snippet"]["thumbnails"].get("high", {}).get("url") or item["snippet"]["thumbnails"].get("default", {}).get("url") or build_youtube_thumbnail(video_id),
                 "id": video_id
             }
     except:
@@ -375,52 +447,89 @@ def get_yt_formats(url):
     try:
         # yt-dlp بدون برووكسي - ما يحتاجه
         import yt_dlp
-        ydl_opts = {
+        youtube_cookiefile = refresh_youtube_cookiefile()
+        video_id = extract_youtube_video_id(url)
+        base_opts = {
             'quiet': True,
             'no_warnings': True,
             'listformats': False,
             'socket_timeout': 30,
-            #'cookiefile': COOKIES_PATH, # Removed because it restricts formats on some videos
-            'extractor_args': {'youtube': {'player_client': ['android', 'web'], 'skip': ['all']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.5',
             },
         }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            formats = []
-            seen_resolutions = set()
-            
-            for fmt in info.get('formats', []):
-                if not fmt.get('vcodec') or not fmt.get('acodec'):
-                    continue
-                res = fmt.get('resolution', 'unknown')
-                if res in seen_resolutions:
-                    continue
-                seen_resolutions.add(res)
-                formats.append({
-                    'format_id': f"ytdl_{fmt.get('format_id', '')}",
-                    'resolution': res,
-                    'ext': fmt.get('ext', 'mp4'),
-                    'filesize': fmt.get('filesize', 0),
-                })
-            
-            if not formats:
-                formats.append({
+
+        attempts = [
+              dict(base_opts, cookiefile=youtube_cookiefile,
+                 extractor_args={'youtube': {'player_client': ['web', 'mweb']}}),
+            dict(base_opts),
+        ]
+
+        info = None
+        last_error = None
+        for ydl_opts in attempts:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                break
+            except Exception as e:
+                last_error = e
+
+        if not info:
+            print(f"yt-dlp info fetch failed: {last_error}")
+            return {
+                'title': 'YouTube Video',
+                'thumbnail': build_youtube_thumbnail(video_id),
+                'formats': [{
                     'format_id': 'best',
                     'resolution': 'Best Available',
                     'ext': 'mp4',
                     'filesize': 0,
-                })
-            
-            return {
-                'title': info.get('title', 'YouTube Video'),
-                'thumbnail': info.get('thumbnail', ''),
-                'formats': formats[:10],
-                'method': 'yt-dlp'
+                }],
+                'method': 'fallback'
             }
+
+        formats = []
+        seen_resolutions = set()
+
+        # جلب الصيغ المتاحة فعلاً من يوتيوب؛ الدمج يتكفل به FFmpeg عند الحاجة
+        for fmt in info.get('formats', []):
+            if fmt.get('vcodec') in (None, 'none'):
+                continue
+
+            res = fmt.get('resolution') or f"{fmt.get('height', 'unknown')}p"
+            if res in seen_resolutions:
+                continue
+            seen_resolutions.add(res)
+            formats.append({
+                'format_id': f"ytdl_{fmt.get('format_id', '')}",
+                'resolution': res,
+                'ext': fmt.get('ext', 'mp4'),
+                'filesize': fmt.get('filesize') or fmt.get('filesize_approx') or 0,
+            })
+
+        if not formats and info.get('format_id') and info.get('vcodec') not in (None, 'none') and info.get('acodec') not in (None, 'none'):
+            formats.append({
+                'format_id': f"ytdl_{info.get('format_id')}",
+                'resolution': info.get('resolution') or 'best',
+                'ext': info.get('ext', 'mp4'),
+                'filesize': info.get('filesize') or info.get('filesize_approx') or 0,
+            })
+
+        if not formats:
+            formats.append({
+                'format_id': 'best',
+                'resolution': 'Best Available',
+                'ext': 'mp4',
+                'filesize': 0,
+            })
+
+        return {
+            'title': info.get('title', 'YouTube Video'),
+            'thumbnail': info.get('thumbnail') or build_youtube_thumbnail(video_id),
+            'formats': formats[:10],
+            'method': 'yt-dlp'
+        }
     except Exception as e:
         print(f"yt-dlp info fetch failed: {e}")
 
@@ -440,30 +549,55 @@ def get_yt_formats(url):
 def download_vd(url, format_id=None):
     try:
         import yt_dlp
+        youtube_cookiefile = refresh_youtube_cookiefile()
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
-            #'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web'], 'skip': ['all']}},
+            'cookiefile': youtube_cookiefile,
+            'extractor_args': {'youtube': {'player_client': ['web', 'mweb']}},
+            'ignore_no_formats_error': True,
+            'merge_output_format': 'mp4',
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.5',
             },
         }
         #yt-dlp ما يحتاج برووكسي
+        selected_format = 'bestvideo+bestaudio/best'
         if format_id and format_id.startswith('ytdl_'):
-            ydl_opts['format'] = format_id.replace('ytdl_', '')
-        else:
-            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
-            title = info.get('title', 'YouTube Video')
-            if os.path.exists(file_path):
-                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                upload_to_supabase(file_path, safe_file_name)
-                return file_path, title
+            selected_format = format_id.replace('ytdl_', '')
+
+        fallback_formats = []
+        for current_format in [selected_format, '18', 'bestvideo+bestaudio/best', 'best']:
+            if current_format not in fallback_formats:
+                fallback_formats.append(current_format)
+
+        def try_download(opts):
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    file_path = ydl.prepare_filename(info)
+                    file_path = resolve_downloaded_file(file_path)
+                    title = info.get('title', 'YouTube Video')
+                    if os.path.exists(file_path):
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        return file_path, title
+            except Exception as exc:
+                error_text = str(exc)
+                if "Sign in to confirm you’re not a bot" in error_text or "Sign in to confirm you're not a bot" in error_text or "not a bot" in error_text:
+                    refreshed_cookiefile = refresh_youtube_cookiefile()
+                    if refreshed_cookiefile and opts.get('cookiefile') != refreshed_cookiefile:
+                        retry_opts = dict(opts)
+                        retry_opts['cookiefile'] = refreshed_cookiefile
+                        return try_download(retry_opts)
+                return None, None
+            return None, None
+
+        for current_format in fallback_formats:
+            ydl_opts['format'] = current_format
+            file_result = try_download(ydl_opts)
+            if file_result[0]:
+                return file_result
     except Exception as e:
         print(f"yt-dlp download_vd Error: {e}")
 
@@ -473,28 +607,90 @@ def download_vd(url, format_id=None):
 def download_mp3(url):
     try:
         import yt_dlp
+        youtube_cookiefile = refresh_youtube_cookiefile()
         ydl_opts = {
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
-            'format': 'ba[asr=44100]/ba/b',
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
             'format_sort': ['+size', 'br', 'asr'],
             'socket_timeout': 60,
-            #'cookiefile': COOKIES_PATH,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web'], 'skip': ['all']}},
+            'extractor_args': {'youtube': {'player_client': ['web', 'mweb']}},
+            'cookiefile': youtube_cookiefile,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.5',
             },
         }
         #yt-dlp ما يحتاج برووكسي
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'YouTube Video')
-            file_path = ydl.prepare_filename(info)
-            if os.path.exists(file_path):
-                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
-                upload_to_supabase(file_path, safe_file_name)
-                return file_path, title
+        def try_download(opts):
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    title = info.get('title', 'YouTube Video')
+                    file_path = ydl.prepare_filename(info)
+                    file_path = resolve_downloaded_file(file_path)
+                    if os.path.exists(file_path):
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        return file_path, title
+            except Exception as exc:
+                error_text = str(exc)
+                if "Sign in to confirm you’re not a bot" in error_text or "Sign in to confirm you're not a bot" in error_text or "not a bot" in error_text:
+                    refreshed_cookiefile = refresh_youtube_cookiefile()
+                    if refreshed_cookiefile and opts.get('cookiefile') != refreshed_cookiefile:
+                        retry_opts = dict(opts)
+                        retry_opts['cookiefile'] = refreshed_cookiefile
+                        return try_download(retry_opts)
+                return None, None
+            return None, None
+
+        file_result = try_download(ydl_opts)
+        if file_result[0]:
+            return file_result
+
+        # fallback: pytubefix عندما يفشل yt-dlp بسبب challenge/signature/runtime
+        try:
+            from pytubefix import YouTube
+            import subprocess
+
+            yt = YouTube(url)
+            audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+            if not audio_stream:
+                return None, None
+
+            downloaded_path = audio_stream.download(output_path=OUTPUT)
+            downloaded_path = resolve_downloaded_file(downloaded_path)
+            if not downloaded_path or not os.path.exists(downloaded_path):
+                return None, None
+
+            title = yt.title or 'YouTube Video'
+            mp3_path = os.path.splitext(downloaded_path)[0] + '.mp3'
+
+            try:
+                subprocess.run(
+                    ['ffmpeg', '-y', '-i', downloaded_path, '-vn', '-b:a', '192k', mp3_path],
+                    check=True,
+                    capture_output=True
+                )
+                final_path = mp3_path if os.path.exists(mp3_path) else downloaded_path
+            except Exception as convert_error:
+                print(f"pytubefix convert failed: {convert_error}")
+                final_path = downloaded_path
+
+            if os.path.exists(final_path):
+                safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(final_path))
+                upload_to_supabase(final_path, safe_file_name)
+                if final_path != downloaded_path and os.path.exists(downloaded_path):
+                    try:
+                        os.remove(downloaded_path)
+                    except:
+                        pass
+                return final_path, title
+        except Exception as fallback_error:
+            print(f"pytubefix fallback failed: {fallback_error}")
     except Exception as e:
         print(f"yt-dlp download_mp3 Error: {e}")
         return None, None
@@ -889,7 +1085,7 @@ def download_tiktok_photos(url):
                     'quiet': True,
                     'no_warnings': True,
                     'skip_unavailable_fragments': True,
-                    'cookies': COOKIES_PATH,
+                    'cookiefile': get_youtube_cookiefile(),
                     'http_headers': {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
                     }
@@ -1521,15 +1717,17 @@ def handle_social_url(msg):
                     if os.path.exists(photo['path']):
                         os.remove(photo['path'])
 
-        # إرسال الفيديوهات
+                # إرسال الفيديوهات
         if videos:
             for video in videos:
                 markup = None
                 if platform in ["انستقرام", "تيك توك"]:
                     markup = telebot.types.InlineKeyboardMarkup()
                     markup.add(telebot.types.InlineKeyboardButton("🔥 تنزيل بدقة عالية", callback_data="high_quality"))
-                    # Store the URL for high quality download
-                    if chat_id not in user_data:
+                    
+                    # إصلاح خطأ 'str' object does not support item assignment
+                    # نتأكد أن user_data[chat_id] هو قاموس وليس نصاً من عملية سابقة
+                    if chat_id not in user_data or not isinstance(user_data[chat_id], dict):
                         user_data[chat_id] = {}
                     user_data[chat_id]['pending_high_quality'] = url
 
@@ -1673,14 +1871,25 @@ def callback_download(call):
                 if os.path.exists(file_path): os.remove(file_path)
                 return
 
-            with open(file_path, "rb") as f:
-                bot.send_video(
-                    chat_id, 
-                    f, 
-                    caption=f"✅ تم تحميل: {safe_title}", 
-                    supports_streaming=True,
-                    timeout=300
-                )
+            try:
+                print(f"[DEBUG] Sending YouTube video to Telegram: {file_path}")
+                with open(file_path, "rb") as f:
+                    bot.send_video(
+                        chat_id,
+                        f,
+                        caption=f"✅ تم تحميل: {safe_title}",
+                        supports_streaming=True,
+                        timeout=300
+                    )
+            except Exception as send_error:
+                print(f"[DEBUG] send_video failed, fallback to send_document: {send_error}")
+                with open(file_path, "rb") as f:
+                    bot.send_document(
+                        chat_id,
+                        f,
+                        caption=f"✅ تم تحميل: {safe_title}",
+                        timeout=300
+                    )
             
             # حذف الملف محلياً وحذفه من الستورج بعد الإرسال
             file_name_only = os.path.basename(file_path)
@@ -1750,27 +1959,74 @@ def format_views(n):
 
 # دالة البحث في يوتيوب باستخدام Google API
 def search_youtube(query):
+    results = []
+
+    if YOUTUBE_API_KEY:
+        try:
+            import requests
+            search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&q={requests.utils.quote(query)}&type=video&maxResults=10&key={YOUTUBE_API_KEY}"
+            response = requests.get(search_url, timeout=10)
+            data = response.json()
+
+            for item in data.get('items', []):
+                video_id = item.get('id', {}).get('videoId')
+                if not video_id:
+                    continue
+                snippet = item.get('snippet', {})
+                thumbnails = snippet.get('thumbnails', {})
+                results.append({
+                    'title': snippet.get('title', 'YouTube Video'),
+                    'url': f"https://www.youtube.com/watch?v={video_id}",
+                    'id': video_id,
+                    'duration': 0,
+                    'view_count': 0,
+                    'uploader': snippet.get('channelTitle', 'YouTube'),
+                    'thumbnail': thumbnails.get('high', {}).get('url') or thumbnails.get('default', {}).get('url') or build_youtube_thumbnail(video_id),
+                })
+
+            if results:
+                return results
+        except Exception as e:
+            print(f"YouTube API Search Error: {e}")
+
     try:
-        import requests
-        search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&q={requests.utils.quote(query)}&type=video&maxResults=10&key={YOUTUBE_API_KEY}"
-        response = requests.get(search_url, timeout=10)
-        data = response.json()
-        results = []
-        
-        for item in data.get('items', []):
-            video_id = item.get('id', {}).get('videoId')
+        import yt_dlp
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'skip_download': True,
+            'socket_timeout': 30,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            },
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            data = ydl.extract_info(f"ytsearch10:{query}", download=False)
+
+        for item in data.get('entries', []) or []:
+            video_id = item.get('id') or item.get('url')
             if not video_id:
                 continue
+            thumbnail = item.get('thumbnail')
+            if not thumbnail and item.get('thumbnails'):
+                thumbnail = item['thumbnails'][-1].get('url')
             results.append({
-                'title': item['snippet']['title'],
-                'url': f"https://www.youtube.com/watch?v={video_id}",
+                'title': item.get('title', 'YouTube Video'),
+                'url': item.get('webpage_url') or f"https://www.youtube.com/watch?v={video_id}",
                 'id': video_id,
-                'thumbnail': item['snippet']['thumbnails']['high']['url'],
+                'duration': item.get('duration') or 0,
+                'view_count': item.get('view_count') or 0,
+                'uploader': item.get('uploader') or item.get('channel') or item.get('channel_name') or 'YouTube',
+                'thumbnail': thumbnail or build_youtube_thumbnail(video_id),
             })
-        return results
+
+        if results:
+            return results
     except Exception as e:
-        print(f"YouTube API Search Error: {e}")
-        return []
+        print(f"YouTube yt-dlp Search Error: {e}")
+
+    return []
 
 # استيراد مكتبة requests للبحث عن الصور
 import requests
@@ -1885,24 +2141,22 @@ def handle_other_messages(msg):
     dl_buttons = []
     
     for i, res in enumerate(results[:5], 1): # عرض أول 5 نتائج
-        duration = f"{int(res['duration']//60)}:{int(res['duration']%60):02d}" if res['duration'] else "0:00"
-        views = format_views(res['view_count'])
+        duration_value = res.get('duration') or 0
+        view_count = res.get('view_count') or 0
+        duration = f"{int(duration_value//60)}:{int(duration_value%60):02d}" if duration_value else "0:00"
+        views = format_views(view_count)
         
-        safe_title = html.escape(res['title'])
-        safe_uploader = html.escape(res['uploader'])
+        safe_title = html.escape(res.get('title', 'YouTube Video'))
+        safe_uploader = html.escape(res.get('uploader') or 'YouTube')
         
         response_text += f"{i}️⃣ <b>{safe_title}</b>\n"
         response_text += f"👤 {safe_uploader} | 🕒 {duration} | 👁 {views}\n\n"
         
         # إضافة زر برقم المقطع للتحميل السهل
-        dl_buttons.append(telebot.types.InlineKeyboardButton(f"{i}", callback_data=f"dl_search_{res['id']}"))
+        dl_buttons.append(telebot.types.InlineKeyboardButton(f"{i}", callback_data=f"dl_search_{res.get('id')}"))
     
     # إضافة أزرار الأرقام في صف واحد
     markup.add(*dl_buttons)
-    
-    # زر التالي
-    safe_query_callback = query[:20].replace(":", "_").replace("|", "_")
-    markup.add(telebot.types.InlineKeyboardButton("« التالي", callback_data=f"search_next_{safe_query_callback}"))
     
     # توجيه الرسالة للأدمن
     try:
