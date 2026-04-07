@@ -1,5 +1,5 @@
 pyTelegramBotAPI
-yt-dlp
+yt-dlp>=2025.3.21
 requests
 instaloader
 supabase
@@ -9,6 +9,6 @@ cloudscraper
 python-dotenv
 tiktok-dlpy
 gallery-dl
-pytubefix
+pytubefix>=7.0.0
 youtube-dl
 pysocks

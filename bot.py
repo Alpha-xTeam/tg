@@ -505,39 +505,70 @@ def get_yt_formats(url):
             },
         }
 
+        # تجربة عدة إعدادات مع عملاء مختلفين لزيادة فرص النجاح
         attempts = [
-              dict(base_opts, cookiefile=youtube_cookiefile,
-                 extractor_args={'youtube': {'player_client': ['web', 'mweb']}}),
-            dict(base_opts),
+            # المحاولة 1: web client مع كوكيز
+            dict(base_opts, cookiefile=youtube_cookiefile,
+                 extractor_args={'youtube': {'player_client': ['web']}},
+                 format='bestvideo+bestaudio/best'),
+            # المحاولة 2: ios client (أقل حماية)
+            dict(base_opts, cookiefile=youtube_cookiefile,
+                 extractor_args={'youtube': {'player_client': ['ios']}},
+                 format='best'),
+            # المحاولة 3: web بدون كوكيز
+            dict(base_opts,
+                 extractor_args={'youtube': {'player_client': ['web']}},
+                 format='bestvideo+bestaudio/best'),
+            # المحاولة 4: mweb مع كوكيز
+            dict(base_opts, cookiefile=youtube_cookiefile,
+                 extractor_args={'youtube': {'player_client': ['mweb']}},
+                 format='best'),
+            # المحاولة 5: tv client
+            dict(base_opts,
+                 extractor_args={'youtube': {'player_client': ['tv']}},
+                 format='best'),
         ]
 
         info = None
         last_error = None
-        for ydl_opts in attempts:
+        cookie_refreshed = False
+        
+        for attempt_num, ydl_opts in enumerate(attempts, 1):
             try:
+                print(f"[DEBUG] YouTube attempt #{attempt_num}: {ydl_opts.get('extractor_args', {})}")
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
-                break
+                
+                # التحقق من وجود معلومات صحيحة
+                if info and info.get('formats'):
+                    print(f"[DEBUG] Success on attempt #{attempt_num}")
+                    break
+                    
             except Exception as e:
                 last_error = e
-                error_text = str(e)
+                error_text = str(e).lower()
                 
-                # If cookie-related error, force refresh and retry once
-                if youtube_cookiefile and ("cookie" in error_text.lower() or "consent" in error_text.lower()):
+                # إذا كان الخطأ متعلق بالكوكيز، نحدثها ونعيد المحاولة
+                if youtube_cookiefile and not cookie_refreshed and ("cookie" in error_text or "consent" in error_text):
                     print("[DEBUG] Cookie error detected, forcing refresh...")
                     youtube_cookiefile = refresh_youtube_cookiefile()
-                    if youtube_cookiefile:
-                        ydl_opts['cookiefile'] = youtube_cookiefile
-                        try:
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                                info = ydl.extract_info(url, download=False)
+                    cookie_refreshed = True
+                    # إعادة نفس المحاولة بالكوكيز الجديدة
+                    ydl_opts['cookiefile'] = youtube_cookiefile
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            info = ydl.extract_info(url, download=False)
+                        if info and info.get('formats'):
+                            print(f"[DEBUG] Success after cookie refresh")
                             break
-                        except Exception as retry_error:
-                            last_error = retry_error
-                            print(f"[DEBUG] Cookie refresh didn't help: {retry_error}")
+                    except Exception as retry_error:
+                        last_error = retry_error
+                        print(f"[DEBUG] Cookie refresh didn't help: {retry_error}")
+                else:
+                    print(f"[DEBUG] Attempt #{attempt_num} failed: {e}")
 
         if not info:
-            print(f"yt-dlp info fetch failed: {last_error}")
+            print(f"yt-dlp info fetch failed after {len(attempts)} attempts: {last_error}")
             return {
                 'title': 'YouTube Video',
                 'thumbnail': build_youtube_thumbnail(video_id),
@@ -615,7 +646,7 @@ def download_vd(url, format_id=None):
             'outtmpl': f'{OUTPUT}/%(title)s.%(ext)s',
             'socket_timeout': 60,
             'cookiefile': youtube_cookiefile,
-            'extractor_args': {'youtube': {'player_client': ['web', 'mweb']}},
+            'extractor_args': {'youtube': {'player_client': ['web', 'ios']}},
             'ignore_no_formats_error': True,
             'merge_output_format': 'mp4',
             'http_headers': {
@@ -627,12 +658,21 @@ def download_vd(url, format_id=None):
         if format_id and format_id.startswith('ytdl_'):
             selected_format = format_id.replace('ytdl_', '')
 
+        # ترتيب الجودات المحاول عليها
         fallback_formats = []
-        for current_format in [selected_format, '18', 'bestvideo+bestaudio/best', 'best']:
+        for current_format in [selected_format, '18', 'bestvideo+bestaudio/best', 'best', 'worst']:
             if current_format not in fallback_formats:
                 fallback_formats.append(current_format)
 
-        def try_download(opts):
+        # قائمة محاولات بترتيب الأفضلية
+        client_attempts = [
+            {'player_client': ['web', 'ios'], 'format': 'bestvideo+bestaudio/best'},
+            {'player_client': ['ios'], 'format': 'best'},
+            {'player_client': ['web'], 'format': 'bestvideo+bestaudio/best'},
+            {'player_client': ['tv'], 'format': 'best'},
+        ]
+
+        def try_download_with_opts(opts):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -645,20 +685,28 @@ def download_vd(url, format_id=None):
                         return file_path, title
             except Exception as exc:
                 error_text = str(exc)
-                if "Sign in to confirm you’re not a bot" in error_text or "Sign in to confirm you're not a bot" in error_text or "not a bot" in error_text:
+                # تحديث الكوكيز إذا لزم الأمر
+                if "Sign in to confirm you're not a bot" in error_text or "Sign in to confirm you're not a bot" in error_text or "not a bot" in error_text.lower():
                     refreshed_cookiefile = refresh_youtube_cookiefile()
                     if refreshed_cookiefile and opts.get('cookiefile') != refreshed_cookiefile:
                         retry_opts = dict(opts)
                         retry_opts['cookiefile'] = refreshed_cookiefile
-                        return try_download(retry_opts)
+                        return try_download_with_opts(retry_opts)
+                print(f"[DEBUG] Download failed: {exc}")
                 return None, None
             return None, None
 
-        for current_format in fallback_formats:
-            ydl_opts['format'] = current_format
-            file_result = try_download(ydl_opts)
-            if file_result[0]:
-                return file_result
+        # تجربة كل مجموعة إعدادات
+        for client_setup in client_attempts:
+            for fmt in fallback_formats[:2]:  # نجرب أفضل جودتين فقط
+                current_opts = {
+                    **ydl_opts,
+                    'extractor_args': {'youtube': {'player_client': client_setup['player_client']}},
+                    'format': fmt,
+                }
+                file_result = try_download_with_opts(current_opts)
+                if file_result[0]:
+                    return file_result
     except Exception as e:
         print(f"yt-dlp download_vd Error: {e}")
 
@@ -679,7 +727,7 @@ def download_mp3(url):
             }],
             'format_sort': ['+size', 'br', 'asr'],
             'socket_timeout': 60,
-            'extractor_args': {'youtube': {'player_client': ['web', 'mweb']}},
+            'extractor_args': {'youtube': {'player_client': ['web', 'ios']}},
             'cookiefile': youtube_cookiefile,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -699,12 +747,13 @@ def download_mp3(url):
                         return file_path, title
             except Exception as exc:
                 error_text = str(exc)
-                if "Sign in to confirm you’re not a bot" in error_text or "Sign in to confirm you're not a bot" in error_text or "not a bot" in error_text:
+                if "Sign in to confirm you're not a bot" in error_text or "Sign in to confirm you're not a bot" in error_text or "not a bot" in error_text.lower():
                     refreshed_cookiefile = refresh_youtube_cookiefile()
                     if refreshed_cookiefile and opts.get('cookiefile') != refreshed_cookiefile:
                         retry_opts = dict(opts)
                         retry_opts['cookiefile'] = refreshed_cookiefile
                         return try_download(retry_opts)
+                print(f"[DEBUG] MP3 download failed: {exc}")
                 return None, None
             return None, None
 
