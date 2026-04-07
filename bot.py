@@ -1289,11 +1289,90 @@ def download_tiktok_photos(url):
         return [], None
 
 # دالة تحميل فيديو أو صور من تيك توك أو انستقرام
+def download_facebook(url):
+    """تحميل الفيديو من فيسبوك باستخدام yt-dlp مع محاولات متعددة"""
+    try:
+        import yt_dlp
+        
+        # تجربة عدة إعدادات لأن فيسبوك صعب التحميل
+        attempts = [
+            {
+                'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'quiet': True,
+                'no_warnings': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                },
+            },
+            {
+                'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+                'format': 'sd',  # جودة متوسطة
+                'quiet': True,
+                'no_warnings': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                },
+            },
+            {
+                'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+                'format': 'hd',  # جودة عالية
+                'quiet': True,
+                'no_warnings': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                },
+            },
+            {
+                'outtmpl': f'{OUTPUT}/%(title)s_%(id)s.%(ext)s',
+                'format': 'best',
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': INSTA_COOKIES_FILE if os.path.exists(INSTA_COOKIES_FILE) else COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                },
+            },
+        ]
+
+        last_error = None
+        for attempt_num, ydl_opts in enumerate(attempts, 1):
+            try:
+                print(f"[FB DEBUG] Facebook download attempt #{attempt_num}")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    file_path = ydl.prepare_filename(info)
+                    file_path = resolve_downloaded_file(file_path)
+                    
+                    if os.path.exists(file_path):
+                        safe_title = re.sub(r'[\\/*?:"<>|]', "_", info.get('title', 'Facebook Video'))
+                        safe_file_name = re.sub(r'[^a-zA-Z0-9._-]', '_', os.path.basename(file_path))
+                        upload_to_supabase(file_path, safe_file_name)
+                        print(f"[FB DEBUG] Facebook download successful: {safe_file_name}")
+                        return [{'path': file_path, 'type': 'video'}], safe_title
+            except Exception as e:
+                last_error = e
+                print(f"[FB DEBUG] Attempt #{attempt_num} failed: {e}")
+                continue
+
+        print(f"[FB DEBUG] All Facebook download attempts failed: {last_error}")
+        return [], None
+
+    except Exception as e:
+        print(f"[FB DEBUG] Facebook download error: {e}")
+        return [], None
+
+
 def download_social(url, platform="social", quality="high"):
     # معالجة خاصة لصور تيك توك أولاً (yt-dlp لا يدعم روابط /photo/)
     if "tiktok.com" in url and "/photo/" in url:
         print(f"TikTok photo URL detected: {url}")
         return download_tiktok_photos(url)
+    
+    # معالجة خاصة للفيسبوك
+    if "facebook.com" in url or "fb.watch" in url or "fb.com" in url:
+        print(f"Facebook URL detected: {url}")
+        return download_facebook(url)
 
     if "instagram.com" in url:
         try:
@@ -1700,9 +1779,9 @@ def handle_youtube_url(msg):
 
 
 # التعامل مع روابط تيك توك وانستقرام وساوند كلاود وتويتر
-@bot.message_handler(func=lambda message: any(x in message.text for x in ["tiktok.com", "instagram.com", "soundcloud.com", "twitter.com", "x.com"]))
+@bot.message_handler(func=lambda message: any(x in message.text for x in ["tiktok.com", "instagram.com", "soundcloud.com", "twitter.com", "x.com", "facebook.com", "fb.watch", "fb.com"]))
 def handle_social_url(msg):
-    print(f"[DEBUG] TikTok/Insta/SoundCloud handler triggered. msg.text: {msg.text}")
+    print(f"[DEBUG] TikTok/Insta/SoundCloud/Facebook handler triggered. msg.text: {msg.text}")
     if not check_sub(msg.chat.id):
         config = get_config()
         markup = telebot.types.InlineKeyboardMarkup()
@@ -1740,6 +1819,9 @@ def handle_social_url(msg):
     elif "twitter.com" in url or "x.com" in url:
         platform = "تويتر"
         increment_stat("twitter_count")
+    elif "facebook.com" in url or "fb.watch" in url or "fb.com" in url:
+        platform = "فيسبوك"
+        increment_stat("facebook_count")
     else:
         platform = "منصة غير معروفة"
     
