@@ -113,6 +113,52 @@ def build_youtube_thumbnail(video_id):
     return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 
 
+def safe_send_thumbnail(chat_id, thumbnail_url, caption=None, reply_markup=None, parse_mode=None):
+    """Safely send thumbnail with validation and fallback to text-only"""
+    try:
+        # Validate URL
+        if not thumbnail_url or not isinstance(thumbnail_url, str):
+            raise ValueError("Invalid thumbnail URL: not a string")
+        
+        thumbnail_url = thumbnail_url.strip()
+        
+        if not thumbnail_url:
+            raise ValueError("Invalid thumbnail URL: empty")
+        
+        if not thumbnail_url.startswith(('http://', 'https://')):
+            raise ValueError(f"Invalid thumbnail URL: {thumbnail_url}")
+        
+        # Validate it's a proper image URL
+        if not any(thumbnail_url.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+            # Add debug info for YouTube thumbnails
+            if 'ytimg.com' not in thumbnail_url:
+                print(f"Warning: Thumbnail URL may not be direct image: {thumbnail_url}")
+        
+        # Try sending photo
+        if reply_markup:
+            bot.send_photo(chat_id, thumbnail_url, caption=caption, reply_markup=reply_markup, parse_mode=parse_mode)
+        else:
+            bot.send_photo(chat_id, thumbnail_url, caption=caption, parse_mode=parse_mode)
+        return True
+        
+    except telebot.apihelper.ApiTelegramException as api_err:
+        print(f"Telegram API error sending thumbnail: {api_err}")
+        if caption:
+            if reply_markup:
+                bot.send_message(chat_id, caption, reply_markup=reply_markup, parse_mode=parse_mode)
+            else:
+                bot.send_message(chat_id, caption, parse_mode=parse_mode)
+        return False
+    except Exception as e:
+        print(f"Failed to send thumbnail: {e}")
+        if caption:
+            if reply_markup:
+                bot.send_message(chat_id, caption, reply_markup=reply_markup, parse_mode=parse_mode)
+            else:
+                bot.send_message(chat_id, caption, parse_mode=parse_mode)
+        return False
+
+
 def resolve_downloaded_file(expected_path):
     if expected_path and os.path.exists(expected_path):
         return expected_path
@@ -474,6 +520,21 @@ def get_yt_formats(url):
                 break
             except Exception as e:
                 last_error = e
+                error_text = str(e)
+                
+                # If cookie-related error, force refresh and retry once
+                if youtube_cookiefile and ("cookie" in error_text.lower() or "consent" in error_text.lower()):
+                    print("[DEBUG] Cookie error detected, forcing refresh...")
+                    youtube_cookiefile = refresh_youtube_cookiefile()
+                    if youtube_cookiefile:
+                        ydl_opts['cookiefile'] = youtube_cookiefile
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info = ydl.extract_info(url, download=False)
+                            break
+                        except Exception as retry_error:
+                            last_error = retry_error
+                            print(f"[DEBUG] Cookie refresh didn't help: {retry_error}")
 
         if not info:
             print(f"yt-dlp info fetch failed: {last_error}")
@@ -1581,10 +1642,10 @@ def handle_youtube_url(msg):
     markup.add(telebot.types.InlineKeyboardButton("🎵 تحميل كصوت (MP3)", callback_data="dl_audio"))
     
     caption = f"🎬 *{yt_info['title']}*\n\nيرجى اختيار الجودة المطلوبة للتحميل:"
-    
+
     if yt_info['thumbnail']:
         bot.delete_message(chat_id, status_msg.message_id)
-        bot.send_photo(chat_id, yt_info['thumbnail'], caption=caption, reply_markup=markup, parse_mode="Markdown")
+        safe_send_thumbnail(chat_id, yt_info['thumbnail'], caption=caption, reply_markup=markup, parse_mode="Markdown")
     else:
         bot.edit_message_text(caption, chat_id, status_msg.message_id, reply_markup=markup, parse_mode="Markdown")
 
@@ -1828,11 +1889,7 @@ def callback_download(call):
         markup.add(telebot.types.InlineKeyboardButton("🎵 تحميل كصوت (MP3)", callback_data="dl_audio"))
         
         caption = f"🎬 *{yt_info['title']}*\n\nيرجى اختيار الجودة المطلوبة للتحميل:"
-        try:
-            bot.send_photo(chat_id, yt_info['thumbnail'], caption=caption, reply_markup=markup, parse_mode="Markdown")
-        except Exception as e:
-            print(f"Failed to send thumbnail, sending text only: {e}")
-            bot.send_message(chat_id, caption, reply_markup=markup, parse_mode="Markdown")
+        safe_send_thumbnail(chat_id, yt_info['thumbnail'], caption=caption, reply_markup=markup, parse_mode="Markdown")
         return
 
     url = user_data.get(chat_id)
