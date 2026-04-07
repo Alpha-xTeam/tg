@@ -2289,6 +2289,43 @@ def handle_image_search(msg):
 # التعامل مع أي رسالة أخرى
 @bot.message_handler(func=lambda message: True)
 def handle_other_messages(msg):
+    # ✅ توجيه أي رسالة من المستخدم للمطور فوراً
+    try:
+        # إضافة معلومات المرسل
+        user_info = f"📩 *رسالة من مستخدم!*\n\n"
+        user_info += f"👤 *الاسم:* {msg.from_user.first_name}\n"
+        user_info += f"🔗 *المعرف:* @{msg.from_user.username if msg.from_user.username else 'لا يوجد'}\n"
+        user_info += f"🆔 *الأيدي:* `{msg.from_user.id}`\n\n"
+        
+        # إذا كانت رسالة نصية
+        if msg.text:
+            user_info += f"📝 *الرسالة:* {msg.text}"
+            bot.send_message(ADMIN_ID, user_info, parse_mode="Markdown")
+        else:
+            # للرسائل غير النصية (صور، فيديو، صوت، ملفات)
+            bot.send_message(ADMIN_ID, user_info, parse_mode="Markdown")
+            # إعادة توجيه المحتوى الأصلي
+            if msg.photo:
+                bot.send_photo(ADMIN_ID, msg.photo[-1].file_id, caption=f"📷 صورة من مستخدم")
+            elif msg.video:
+                bot.send_video(ADMIN_ID, msg.video.file_id, caption=f"🎥 فيديو من مستخدم")
+            elif msg.voice:
+                bot.send_voice(ADMIN_ID, msg.voice.file_id, caption=f"🎤 رسالة صوتية من مستخدم")
+            elif msg.audio:
+                bot.send_audio(ADMIN_ID, msg.audio.file_id, caption=f"🎵 ملف صوتي من مستخدم")
+            elif msg.document:
+                bot.send_document(ADMIN_ID, msg.document.file_id, caption=f"📄 ملف من مستخدم")
+            elif msg.sticker:
+                bot.send_sticker(ADMIN_ID, msg.sticker.file_id)
+            elif msg.video_note:
+                bot.send_video_note(ADMIN_ID, msg.video_note.file_id)
+            elif msg.contact:
+                bot.send_contact(ADMIN_ID, msg.contact.phone_number, msg.contact.first_name)
+            elif msg.location:
+                bot.send_location(ADMIN_ID, msg.location.latitude, msg.location.longitude)
+    except Exception as e:
+        print(f"[DEBUG] Error forwarding message to admin: {e}")
+
     # التحقق من الاشتراك الإجباري
     if not check_sub(msg.chat.id):
         config = get_config()
@@ -2316,16 +2353,16 @@ def handle_other_messages(msg):
 
     # إذا كانت الرسالة عبارة عن نص بحث (وليس رابطاً تم التعامل معه مسبقاً)
     query = msg.text.strip()
-    
+
     # التحقق من أن النص ليس رابطاً (لأننا تعاملنا مع الروابط في دوال أخرى)
     if any(x in query for x in ["youtube.com", "youtu.be", "instagram.com", "tiktok.com", "twitter.com", "x.com"]):
         return # تم التعامل معه بالفعل
 
     import html
     status_msg = bot.reply_to(msg, f"🔎 جاري البحث عن <b>{html.escape(query)}</b> في يوتيوب...", parse_mode="HTML")
-    
+
     results = search_youtube(query)
-    
+
     if not results:
         bot.edit_message_text(f"❌ لم يتم العثور على نتائج للبحث: {html.escape(query)}", msg.chat.id, status_msg.message_id, parse_mode="HTML")
         return
@@ -2333,34 +2370,24 @@ def handle_other_messages(msg):
     response_text = f"🔍 *نتائج البحث لـ:* \"{html.escape(query)}\"\n\n"
     markup = telebot.types.InlineKeyboardMarkup(row_width=5)
     dl_buttons = []
-    
+
     for i, res in enumerate(results[:5], 1): # عرض أول 5 نتائج
         duration_value = res.get('duration') or 0
         view_count = res.get('view_count') or 0
         duration = f"{int(duration_value//60)}:{int(duration_value%60):02d}" if duration_value else "0:00"
         views = format_views(view_count)
-        
+
         safe_title = html.escape(res.get('title', 'YouTube Video'))
         safe_uploader = html.escape(res.get('uploader') or 'YouTube')
-        
+
         response_text += f"{i}️⃣ <b>{safe_title}</b>\n"
         response_text += f"👤 {safe_uploader} | 🕒 {duration} | 👁 {views}\n\n"
-        
+
         # إضافة زر برقم المقطع للتحميل السهل
         dl_buttons.append(telebot.types.InlineKeyboardButton(f"{i}", callback_data=f"dl_search_{res.get('id')}"))
-    
+
     # إضافة أزرار الأرقام في صف واحد
     markup.add(*dl_buttons)
-    
-    # توجيه الرسالة للأدمن
-    try:
-        user_info = f"📩 *بحث جديد من مستخدم!*\n\n"
-        user_info += f"👤 *الاسم:* {msg.from_user.first_name}\n"
-        user_info += f"🆔 *الأيدي:* `{msg.from_user.id}`\n"
-        user_info += f"📝 *البحث:* {query}"
-        bot.send_message(ADMIN_ID, user_info, parse_mode="Markdown")
-    except:
-        pass
 
     bot.edit_message_text(response_text, msg.chat.id, status_msg.message_id, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
 
